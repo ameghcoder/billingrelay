@@ -31,6 +31,7 @@ We work step by step through `docs/milestones.md`. Both the founder and Claude w
   Deploy to Render at checkpoints: first after M07 (sync), then before the freeze.
 - **Flow first.** Before starting each task, Claude writes a rough, understandable flow diagram to
   `.temp/flows/<milestone>-<slug>.md` and stops. Code starts only after the founder has reviewed it.
+  A diagram moves to `docs/design-flow/` only when its flow is really finished and worth keeping.
 - **Ownership.** Claude writes code including the money paths: PayPal handlers, webhook verification,
   ledger/credit transactions, inbox/outbox processing and the destination upsert. The founder
   line-reviews money-path code before it's committed. The founder may write any part.

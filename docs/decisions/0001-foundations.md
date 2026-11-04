@@ -14,3 +14,5 @@ Status: accepted, 2026-10-28 to 2026-11-04.
 8. **The webhook subscribes to 9 specific events, not "All".** See `../paypal.md`.
 9. **Payouts are out of scope.** They'd change what the product is. Invoicing and disputes would extend it.
 10. **Committed docs never point outside the repo.** Anything worth keeping is written into `docs/`.
+11. **The AI agents use OpenAI's GPT-5 family through the AI SDK**, with the model name set in config.
+12. **The project is MIT licensed.**

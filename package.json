@@ -1,0 +1,23 @@
+{
+  "name": "billingrelay",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "pnpm@11.1.0",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @billingrelay/web --filter @billingrelay/worker dev",
+    "build": "pnpm --filter @billingrelay/web --filter @billingrelay/worker build",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @billingrelay/db generate",
+    "db:migrate": "pnpm --filter @billingrelay/db migrate",
+    "db:seed": "pnpm --filter @billingrelay/db seed",
+    "test:e2e": "vitest run --dir tests/e2e"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3",
+    "vitest": "5.1.0"
+  }
+}

@@ -62,10 +62,19 @@ Checkout status shape:
 store the event in the inbox, then return `200`. No billing logic, AI or destination write happens
 inside this request.
 
+## Health (public)
+
+`GET /api/health` returns `{ source, destination, worker }` and nothing else: `ok` or `down` for each database (`not_configured`
+when no destination is set), and `ok` or `stale` for the worker. It returns `200` when healthy, `503` otherwise.
+
 ## Operator (Better Auth session)
+
+Without a session, `/admin` pages redirect to `/login`, and `/admin` API routes return `401 unauthorized`. There is no signup; the one
+operator is seeded. `POST /api/auth/sign-in/email` and `POST /api/auth/sign-out` are Better Auth's own routes.
 
 | Operation | Purpose |
 |---|---|
+| `GET /admin/me` | The signed-in operator. |
 | `POST /admin/config/drafts` | AI or manual billing config draft (versioned). |
 | `POST /admin/config/drafts/:id/validate` | Schema and capability validation, plus a fixture preview labelled as simulation. |
 | `POST /admin/config/drafts/:id/approve` | Approval bound to project, environment and exact draft version. |

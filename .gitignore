@@ -24,3 +24,7 @@ test-results/
 # Logs and OS
 *.log
 .DS_Store
+
+# Next.js generated
+next-env.d.ts
+.playwright-mcp/

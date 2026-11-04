@@ -1,0 +1,28 @@
+{
+  "name": "@billingrelay/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./auth": "./src/auth.ts"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "migrate": "tsx --env-file-if-exists=../../.env.local src/migrate.ts",
+    "seed": "tsx --env-file-if-exists=../../.env.local src/seed.ts",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "better-auth": "1.7.16",
+    "drizzle-orm": "0.45.4",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}

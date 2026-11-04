@@ -1,0 +1,39 @@
+# Two independent databases: BillingRelay's own data, and a stand-in for a merchant's database.
+name: billingrelay
+
+services:
+  source-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: billingrelay
+      POSTGRES_PASSWORD: billingrelay
+      POSTGRES_DB: billingrelay
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - source-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U billingrelay -d billingrelay"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  destination-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: merchant
+      POSTGRES_PASSWORD: merchant
+      POSTGRES_DB: merchant
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - destination-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U merchant -d merchant"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  source-data:
+  destination-data:

@@ -1,0 +1,26 @@
+# Local-only
+/.temp
+.claude/
+.env*
+!.env.example
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+.next/
+dist/
+build/
+out/
+*.tsbuildinfo
+.turbo/
+
+# Tests
+coverage/
+playwright-report/
+test-results/
+
+# Logs and OS
+*.log
+.DS_Store

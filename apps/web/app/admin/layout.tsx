@@ -15,6 +15,9 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           <Link href="/admin/paypal" className="text-sm text-muted-foreground hover:text-foreground">
             PayPal
           </Link>
+          <Link href="/admin/catalog" className="text-sm text-muted-foreground hover:text-foreground">
+            Catalog
+          </Link>
         </nav>
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
           {operator.email}

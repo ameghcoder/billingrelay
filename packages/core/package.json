@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./catalog": "./src/catalog.ts",
     "./paypal-connection": "./src/paypal-connection.ts",
     "./secrets": "./src/secrets.ts"
   },
@@ -15,6 +16,7 @@
   },
   "devDependencies": {
     "@types/node": "22.20.5",
+    "ajv": "8.20.0",
     "typescript": "5.9.3"
   }
 }

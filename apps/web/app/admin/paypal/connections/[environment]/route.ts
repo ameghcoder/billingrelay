@@ -1,8 +1,9 @@
 import { savePaypalConnectionSchema } from "@billingrelay/core/paypal-connection";
 import { isSecretsKeyValid } from "@billingrelay/core/secrets";
 import { PaypalError } from "@billingrelay/provider-paypal";
+import { apiError, jsonResponse } from "@/lib/admin-routes";
 import { saveConnection, toView } from "@/lib/paypal-connection";
-import { apiError, jsonResponse, withSandbox } from "@/lib/paypal-routes";
+import { withSandbox } from "@/lib/paypal-routes";
 
 export const PUT = withSandbox(async ({ request, projectId }) => {
   const body = savePaypalConnectionSchema.safeParse(await request.json().catch(() => null));

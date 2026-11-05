@@ -1,5 +1,6 @@
+import type { CatalogConfig } from "@billingrelay/core/catalog";
 import { sql } from "drizzle-orm";
-import { boolean, check, integer, jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, integer, json, jsonb, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 
 // Better Auth expects these four tables and column names.
@@ -88,5 +89,51 @@ export const paypalConnection = pgTable(
     unique("paypal_connection_project_environment_unique").on(table.projectId, table.environment),
     check("paypal_connection_environment_check", sql`${table.environment} IN ('sandbox', 'live')`),
     check("paypal_connection_webhook_status_check", sql`${table.webhookStatus} IN ('registered', 'not_registered')`),
+  ],
+);
+
+// One row per saved version, never updated. Nothing in packages/db can change a row after inserting it.
+export const catalogVersion = pgTable(
+  "catalog_version",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id),
+    environment: text("environment").$type<"sandbox" | "live">().notNull(),
+    version: integer("version").notNull(),
+    // json, not jsonb: keeps the exact document that was validated, including its key order.
+    config: json("config").$type<CatalogConfig>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+  },
+  (table) => [
+    unique("catalog_version_project_environment_version_unique").on(table.projectId, table.environment, table.version),
+    check("catalog_version_environment_check", sql`${table.environment} IN ('sandbox', 'live')`),
+    check("catalog_version_version_check", sql`${table.version} > 0`),
+  ],
+);
+
+// Which version is live: one row per project and environment.
+export const catalogActive = pgTable(
+  "catalog_active",
+  {
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id),
+    environment: text("environment").$type<"sandbox" | "live">().notNull(),
+    versionId: uuid("version_id")
+      .notNull()
+      .references(() => catalogVersion.id),
+    activatedAt: timestamp("activated_at", { withTimezone: true }).notNull().defaultNow(),
+    activatedBy: text("activated_by")
+      .notNull()
+      .references(() => user.id),
+  },
+  (table) => [
+    primaryKey({ name: "catalog_active_pkey", columns: [table.projectId, table.environment] }),
+    check("catalog_active_environment_check", sql`${table.environment} IN ('sandbox', 'live')`),
   ],
 );

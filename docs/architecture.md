@@ -40,7 +40,7 @@ each independently. A destination retry never creates another payment.
 |---|---|
 | Identity | Projects, scoped API keys (hashed), customers. Unique project + external app user. Email is descriptive |
 | PayPal connection | Merchant, environment, capabilities, webhook identity, encrypted secret reference |
-| Catalog | Products, variants, schema versions, prices, configured benefits |
+| Catalog | Unchangeable versions, each one JSON document of products, variants, prices and benefits, plus a pointer to the live version |
 | PayPal mappings | Internal product/price to PayPal product/plan, scoped by connection and environment |
 | Quotes / sessions | Customer, immutable snapshot, expiry, request key, payload hash, PayPal operation |
 | Billing facts | Purchases, attempts, payments, subscriptions, paid periods; unique PayPal object identity |

@@ -82,7 +82,10 @@ used as an environment: `live` returns `422 live_disabled` before any PayPal cal
 | `PUT /admin/paypal/connections/:environment` | Check credentials with PayPal, encrypt and save the secret, set up the webhook, run the check. `422` if PayPal rejects them and `503` if it can't be reached; both save nothing. |
 | `POST /admin/paypal/connections/:environment/check` | Read-only health and capability check. |
 | `POST /admin/paypal/connections/:environment/webhook` | Set up the webhook again (safe to repeat), then run the check. |
-| `POST /admin/config/drafts` | AI or manual billing config draft (versioned). |
+| `GET /admin/config/drafts` | Saved catalog versions, newest first, with which one is live. |
+| `POST /admin/config/drafts` | `{ baseVersion, config }`, the whole catalog. Saves it as a new version and returns `201 { id, version }`. `400 invalid_config` names each field in `details.fields` and stores nothing. `409 version_conflict` returns `latestVersion` if `baseVersion` is no longer the latest. Doesn't change what's live. |
+| `GET /admin/config/drafts/:id` | One version: its stored config and a JSON Schema for each product's attributes. |
+| `POST /admin/config/drafts/:id/activate` | Makes that version live, after checking the rules again. `422 config_rejected` leaves the live version as it was; `404` for a version outside this project or environment. M12 puts approval in front of this. |
 | `POST /admin/config/drafts/:id/validate` | Schema and capability validation, plus a fixture preview labelled as simulation. |
 | `POST /admin/config/drafts/:id/approve` | Approval bound to project, environment and exact draft version. |
 | `POST /admin/config/drafts/:id/apply` | Create PayPal products/plans idempotently, then activate. Resumes after partial failure. |

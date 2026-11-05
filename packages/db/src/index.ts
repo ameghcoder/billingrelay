@@ -1,3 +1,16 @@
+export {
+  activateCatalogVersion,
+  getActiveCatalog,
+  getCatalogVersion,
+  listCatalogVersions,
+  saveCatalogVersion,
+  type ActivateCatalogResult,
+  type ActiveCatalog,
+  type CatalogScope,
+  type CatalogVersionRecord,
+  type CatalogVersionWithConfig,
+  type SaveCatalogResult,
+} from "./catalog";
 export { closePools, requireEnv } from "./client";
 export {
   getWorkerStatus,

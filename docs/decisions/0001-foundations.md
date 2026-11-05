@@ -1,6 +1,6 @@
 # 0001: Foundations
 
-Status: accepted, 2026-10-28 to 2026-11-04.
+Status: accepted, 2026-10-28 to 2026-11-05.
 
 1. **PayPal is the only payment provider.** Keep PayPal code in `packages/providers/paypal` so core logic and tests don't depend on PayPal's API
    details, but don't build a generic provider layer that only one provider would use.
@@ -16,3 +16,7 @@ Status: accepted, 2026-10-28 to 2026-11-04.
 10. **Committed docs never point outside the repo.** Anything worth keeping is written into `docs/`.
 11. **The AI agents use OpenAI's GPT-5 family through the AI SDK**, with the model name set in config.
 12. **The project is MIT licensed.**
+13. **A catalog version is one JSON document, not product, variant and price tables.** Stored versions stay unchangeable, and approval can bind to one exact
+    version. SQL can't join on a product, but each purchase keeps its own snapshot, so reports don't need to.
+14. **Monthly credits last for the paid month, and credit packs never expire.** It stops unused credits piling up without taking anything the customer paid
+    for. See `../billing-rules.md`.

@@ -30,8 +30,22 @@ pnpm dev                      # web on http://localhost:3100, plus the worker
 Sign in at http://localhost:3100/login, then open **PayPal** and enter your sandbox REST app's client ID and secret. Open **Catalog** to add what
 you sell: each save is a new version, and you choose when one goes live. `GET /api/health` reports the databases and the worker.
 
+Open **Developers** to create an API key for your backend. It's shown once. With a product live, your backend can ask for a quote, which keeps its
+price even if the catalog changes, and expires:
+
+```sh
+curl -X POST http://localhost:3100/v1/quotes \
+  -H "Authorization: Bearer $BILLINGRELAY_API_KEY" \
+  -H "Idempotency-Key: order-1234" \
+  -H "Content-Type: application/json" \
+  -d '{ "externalCustomerId": "app-user-42", "productRef": "template", "variantRef": "extended-license" }'
+```
+
+Keep the key on your server and take `externalCustomerId` from your own session, never from the browser. Retrying with the same `Idempotency-Key`
+returns the same quote. See `docs/api-contract.md`.
+
 `pnpm test` runs the unit tests. With the stack running, `pnpm test:e2e` runs the end-to-end tests. `E2E_WRITE_DB=1` adds the tests that save catalog
-versions, so use it only on a throwaway database.
+versions, API keys and quotes, so use it only on a throwaway database.
 
 **Credits.** Monthly credits from a subscription last for the paid month: unused ones don't carry over, and a customer who cancels keeps them until
 that month ends. Credit packs never expire and are spent after monthly credits. The ledger that enforces this arrives with credit packs and usage.
@@ -53,6 +67,7 @@ Only capabilities with a recorded proof are marked verified.
 | Catalog: products, variants, prices, versions, activation | ✅ verified locally | `tests/e2e/catalog.test.ts` against a production build; not yet hosted, and no checkout reads it yet |
 | Catalog currencies | ⚠️ USD proven with a real payment | EUR, GBP, CAD and AUD pass validation, but no real payment has been made in them |
 | Monthly credits expire, packs don't | ⬜ not built | Rule decided and stated; the ledger comes later |
+| API keys and trusted quotes: fixed price, customer binding, expiry, safe retries | ✅ verified locally | `tests/e2e/quotes.test.ts` against a production build; not yet hosted, and no payment uses a quote yet |
 | BillingRelay checkout, inbox and ledger | ⬜ not built | |
 | Credit packs and atomic consumption | ⬜ not built | |
 | One-way sync to an independent Postgres | ⬜ not built | |

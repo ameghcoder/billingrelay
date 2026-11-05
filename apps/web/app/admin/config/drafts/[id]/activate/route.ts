@@ -1,13 +1,13 @@
 import { activateCatalogVersion } from "@billingrelay/db";
-import { apiError, jsonResponse, withProject } from "@/lib/admin-routes";
-import { catalogScope, checkForActivation, isVersionId } from "@/lib/catalog";
+import { apiError, isUuid, jsonResponse, sandboxScope, withProject } from "@/lib/admin-routes";
+import { checkForActivation } from "@/lib/catalog";
 
 export const POST = withProject<{ params: Promise<{ id: string }> }>(async ({ projectId, operator, context }) => {
   const { id } = await context.params;
-  if (!isVersionId(id)) return apiError(404, "not_found", "This version doesn't exist");
+  if (!isUuid(id)) return apiError(404, "not_found", "This version doesn't exist");
 
   const result = await activateCatalogVersion({
-    ...catalogScope(projectId),
+    ...sandboxScope(projectId),
     versionId: id,
     activatedBy: operator.id,
     check: checkForActivation,

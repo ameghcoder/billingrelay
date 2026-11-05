@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ApiFailureMessage, callCatalogApi, type ApiFailure } from "./catalog-api";
+import { ApiFailureMessage, callAdminApi, type ApiFailure } from "@/components/admin-api";
 import { KIND_LABELS, MONTHLY_CREDITS_RULE, PACK_CREDITS_RULE } from "./labels";
 
 type ProductRow = {
@@ -135,7 +135,7 @@ export function CatalogView({
   async function makeLive(version: CatalogVersionDetail) {
     setBusy(true);
     setFailure(null);
-    const result = await callCatalogApi(`/admin/config/drafts/${version.id}/activate`, { method: "POST" });
+    const result = await callAdminApi(`/admin/config/drafts/${version.id}/activate`, { method: "POST" });
     if ("failure" in result) setFailure(result.failure);
     else router.refresh();
     setBusy(false);

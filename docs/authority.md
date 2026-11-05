@@ -18,7 +18,7 @@ A PayPal browser redirect is never a fact. Only a server-side read or a verified
 
 | Caller | May | May not |
 |---|---|---|
-| Merchant backend (API key) | Create quotes and checkouts, read billing, consume or compensate credits, cancel subscriptions, all within its project and environment | Touch other projects, set prices on catalog checkouts, read secrets |
+| Merchant backend (API key) | Create quotes and checkouts, read billing, consume or compensate credits, cancel subscriptions, all within its project and environment | Touch other projects, set prices on catalog products, grant credits outside the catalog, read secrets |
 | End-user browser | Open the hosted checkout, see safe status | Call `/v1`, set an amount or customer ID |
 | PayPal webhook | Deliver a signed event for its connection | Be trusted because it names an ID; it must verify |
 | Operator (session) | Review and approve config, investigations and repairs; retry deliveries | Edit balances or payment status directly |

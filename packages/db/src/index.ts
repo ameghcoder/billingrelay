@@ -6,12 +6,21 @@ export {
   saveCatalogVersion,
   type ActivateCatalogResult,
   type ActiveCatalog,
-  type CatalogScope,
   type CatalogVersionRecord,
   type CatalogVersionWithConfig,
   type SaveCatalogResult,
 } from "./catalog";
 export { closePools, requireEnv } from "./client";
+export {
+  createApiKey,
+  findActiveApiKey,
+  listApiKeys,
+  revokeApiKey,
+  type ActiveApiKey,
+  type ApiKeyRecord,
+} from "./api-keys";
+export { createQuote, findQuoteByKey, getQuote, type QuoteRecord } from "./quotes";
+export type { ProjectScope } from "./schema";
 export {
   getWorkerStatus,
   pingDestination,

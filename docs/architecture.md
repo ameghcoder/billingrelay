@@ -42,7 +42,7 @@ each independently. A destination retry never creates another payment.
 | PayPal connection | Merchant, environment, capabilities, webhook identity, encrypted secret reference |
 | Catalog | Unchangeable versions, each one JSON document of products, variants, prices and benefits, plus a pointer to the live version |
 | PayPal mappings | Internal product/price to PayPal product/plan, scoped by connection and environment |
-| Quotes / sessions | Customer, immutable snapshot, expiry, request key, payload hash, PayPal operation |
+| Quotes / sessions | Customer, immutable snapshot (one JSON document), expiry, request key, payload hash, PayPal operation |
 | Billing facts | Purchases, attempts, payments, subscriptions, paid periods; unique PayPal object identity |
 | Processing | Verified inbox, status, attempts, failure code, next retry, processing version |
 | Access / credits | Access state, paid-through, credit account, append-only grants/debits/compensations |

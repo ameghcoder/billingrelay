@@ -1,12 +1,11 @@
-import { getDefaultProjectId } from "@billingrelay/db";
+import { getDefaultProjectId, type ProjectScope } from "@billingrelay/db";
+import { apiError } from "./api-response";
 import { withOperator, type Operator } from "./operator";
 
-const NO_STORE = { "Cache-Control": "no-store" };
+export { apiError, invalidRequest, isUuid, jsonResponse } from "./api-response";
 
-export const jsonResponse = (body: unknown, status = 200) => Response.json(body, { status, headers: NO_STORE });
-
-export const apiError = (status: number, code: string, message: string, details?: Record<string, unknown>) =>
-  Response.json({ error: { code, message, ...(details && { details }) } }, { status, headers: NO_STORE });
+// Only sandbox can be used in this project, the same gate as the PayPal routes.
+export const sandboxScope = (projectId: string): ProjectScope => ({ projectId, environment: "sandbox" });
 
 export type ProjectHandler<C> = (args: {
   request: Request;

@@ -20,3 +20,8 @@ Status: accepted, 2026-10-28 to 2026-11-05.
     version. SQL can't join on a product, but each purchase keeps its own snapshot, so reports don't need to.
 14. **Monthly credits last for the paid month, and credit packs never expire.** It stops unused credits piling up without taking anything the customer paid
     for. See `../billing-rules.md`.
+15. **A merchant's backend can name a one-time price, but can't grant credits with it.** Developers with their own catalog need this, and the API key is the
+    line of trust. Credits come only from a reviewed catalog, so a leaked key can't create them.
+16. **A quote never changes and has no stored status.** Removing a product doesn't cancel its open quotes; they run out within 60 minutes. Expiry is worked out
+    from the database's clock on each read.
+17. **API keys are stored as SHA-256 hashes.** Slow hashes protect guessable passwords, and these are 256 random bits checked on every request.

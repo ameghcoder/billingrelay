@@ -19,6 +19,25 @@ platform-hosted checkout URL that uses PayPal.
 references, metadata, quantity, integer amount and currency, bound to project, customer and payload hash.
 Checkout references the quote ID. Expired or altered inputs fail.
 
+A quote's price comes from one of two places:
+
+- **The live catalog.** The request names a product and variant. Sending a price is refused, and a draft is never used.
+- **The merchant's own catalog.** Its backend names the price, for one-time items only. This is safe while the API key stays on that
+  backend. If the merchant copies a price from its own browser into the request, BillingRelay can't detect it, so never do that.
+  The ref can't match a live catalog product, so a catalog price can't be undercut. These quotes can grant one access benefit or
+  nothing, never credits: credits come only from a reviewed catalog, so a leaked key can't create them.
+
+| Area | Rule |
+|---|---|
+| Kinds | `one_time` and `credit_pack`. A subscription starts from a PayPal plan, not a quote |
+| Quantity | 1 to 100, and no more than the product's `maxQuantity` |
+| Total | `unitAmount × quantity`, up to 99,999,999 minor units |
+| Customer | The merchant's own user ID: 1 to 128 characters, no spaces at either end, no control characters. An exact match, never an email lookup |
+| Expiry | Default 30 minutes, allowed 1 to 60, measured by the database's clock |
+| Benefits | Stored per unit, so 2 packs of 5,000 credits grant 10,000 |
+
+A stored quote never changes. Later catalog edits don't affect it, including removing its product: it keeps its price until it expires.
+
 **Recurring prices need PayPal plans.** A recurring config maps to a configured PayPal plan. Arbitrary recurring
 quote amounts are rejected. Product metadata is traceability, not proof of inventory or fulfillment.
 
@@ -102,7 +121,7 @@ that exposure and define a production policy before any live release.
 | Usage reply lost | Same usage key returns the committed outcome, not a second debit |
 | Subscription cancelled / payment failed | Separate PayPal lifecycle from existing paid-through access |
 | Two subscription checkout attempts | Guard the intended active subscription; surface pending/active state |
-| Catalog edits during checkout | Honor the immutable snapshot and expire invalid quotes |
+| Catalog edits during checkout | Honor the immutable snapshot. A quote for a changed or removed product keeps its price and runs out within 60 minutes |
 | Refund after usage | Restrict and surface for review; don't invent a clawback policy |
 | Currencies | Separate configured prices and totals; no implicit FX |
 | Manual target edits | Billing tables are managed projections; reconcile or flag divergence |

@@ -1,4 +1,5 @@
 import type { CatalogConfig } from "@billingrelay/core/catalog";
+import type { QuoteSnapshot } from "@billingrelay/core/quotes";
 import { sql } from "drizzle-orm";
 import { boolean, check, integer, json, jsonb, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
@@ -137,3 +138,71 @@ export const catalogActive = pgTable(
     check("catalog_active_environment_check", sql`${table.environment} IN ('sandbox', 'live')`),
   ],
 );
+
+// The key itself is never stored. It decides the project and environment of every /v1 request.
+export const apiKey = pgTable(
+  "api_key",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id),
+    environment: text("environment").$type<"sandbox" | "live">().notNull(),
+    name: text("name").notNull(),
+    keyHash: text("key_hash").notNull(),
+    lastFour: text("last_four").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (table) => [
+    unique("api_key_key_hash_unique").on(table.keyHash),
+    check("api_key_environment_check", sql`${table.environment} IN ('sandbox', 'live')`),
+  ],
+);
+
+// The merchant's own user ID identifies a customer. Email never does.
+export const customer = pgTable(
+  "customer",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id),
+    externalCustomerId: text("external_customer_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("customer_project_external_unique").on(table.projectId, table.externalCustomerId)],
+);
+
+// Never updated. Nothing in packages/db can change a row after inserting it.
+export const quote = pgTable(
+  "quote",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id),
+    environment: text("environment").$type<"sandbox" | "live">().notNull(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customer.id),
+    apiKeyId: uuid("api_key_id")
+      .notNull()
+      .references(() => apiKey.id),
+    idempotencyKey: text("idempotency_key").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    // json, not jsonb: keeps the exact document, including its key order.
+    snapshot: json("snapshot").$type<QuoteSnapshot>().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("quote_project_environment_key_unique").on(table.projectId, table.environment, table.idempotencyKey),
+    check("quote_environment_check", sql`${table.environment} IN ('sandbox', 'live')`),
+  ],
+);
+
+export type ProjectScope = { projectId: string; environment: "sandbox" | "live" };

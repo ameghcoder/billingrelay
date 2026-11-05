@@ -1,20 +1,20 @@
-import { findKindChanges, saveCatalogDraftSchema, toCatalogIssues, type CatalogIssue } from "@billingrelay/core/catalog";
+import { findKindChanges, saveCatalogDraftSchema, toFieldIssues, type FieldIssue } from "@billingrelay/core/catalog";
 import { getActiveCatalog, listCatalogVersions, saveCatalogVersion } from "@billingrelay/db";
-import { apiError, jsonResponse, withProject } from "@/lib/admin-routes";
-import { catalogScope, toSummary } from "@/lib/catalog";
+import { apiError, jsonResponse, sandboxScope, withProject } from "@/lib/admin-routes";
+import { toSummary } from "@/lib/catalog";
 
-const invalidConfig = (fields: CatalogIssue[]) => apiError(400, "invalid_config", "The catalog has errors", { fields });
+const invalidConfig = (fields: FieldIssue[]) => apiError(400, "invalid_config", "The catalog has errors", { fields });
 
 export const GET = withProject(async ({ projectId }) => {
-  const versions = await listCatalogVersions(catalogScope(projectId));
+  const versions = await listCatalogVersions(sandboxScope(projectId));
   return jsonResponse({ versions: versions.map(toSummary) });
 });
 
 export const POST = withProject(async ({ request, projectId, operator }) => {
   const body = saveCatalogDraftSchema.safeParse(await request.json().catch(() => null));
-  if (!body.success) return invalidConfig(toCatalogIssues(body.error));
+  if (!body.success) return invalidConfig(toFieldIssues(body.error));
 
-  const scope = catalogScope(projectId);
+  const scope = sandboxScope(projectId);
   const live = await getActiveCatalog(scope);
   const kindChanges = findKindChanges(body.data.config, live?.config ?? null);
   if (kindChanges.length > 0) {

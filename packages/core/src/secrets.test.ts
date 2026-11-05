@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
-import { decryptSecret, encryptSecret, isSecretsKeyValid, SecretUnreadableError } from "./secrets";
+import { decryptSecret, encryptSecret, generateApiKey, hashApiKey, isSecretsKeyValid, SecretUnreadableError } from "./secrets";
 
 const BINDING = "paypal_connection:project-a:sandbox";
 const useNewKey = () => {
@@ -44,5 +44,25 @@ describe("secrets", () => {
     expect(() => encryptSecret("the-secret", BINDING)).toThrow("SECRETS_ENCRYPTION_KEY");
     process.env.SECRETS_ENCRYPTION_KEY = randomBytes(16).toString("base64");
     expect(isSecretsKeyValid()).toBe(false);
+  });
+});
+
+describe("API keys", () => {
+  it("makes a long random key and shows its environment", () => {
+    const { key } = generateApiKey("sandbox");
+    expect(key).toMatch(/^br_sandbox_[A-Za-z0-9_-]{43}$/);
+    expect(generateApiKey("sandbox").key).not.toBe(key);
+  });
+
+  it("stores only a hash and the last 4 characters", () => {
+    const { key, keyHash, lastFour } = generateApiKey("sandbox");
+    expect(keyHash).toBe(hashApiKey(key));
+    expect(keyHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(keyHash).not.toContain(key);
+    expect(lastFour).toBe(key.slice(-4));
+  });
+
+  it("hashes different keys differently", () => {
+    expect(hashApiKey("br_sandbox_a")).not.toBe(hashApiKey("br_sandbox_b"));
   });
 });

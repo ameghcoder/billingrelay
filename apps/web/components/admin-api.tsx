@@ -1,13 +1,13 @@
 "use client";
 
-import type { CatalogIssue } from "@billingrelay/core/catalog";
+import type { FieldIssue } from "@billingrelay/core/catalog";
 
-export type ApiFailure = { message: string; fields: CatalogIssue[] };
+export type ApiFailure = { message: string; fields: FieldIssue[] };
 
 const FALLBACK = "Something went wrong. Try again shortly.";
 
 /** Returns the body on success. On failure, the message and each field the server named. */
-export async function callCatalogApi<Body>(path: string, init: RequestInit): Promise<{ body: Body } | { failure: ApiFailure }> {
+export async function callAdminApi<Body>(path: string, init: RequestInit): Promise<{ body: Body } | { failure: ApiFailure }> {
   try {
     const response = await fetch(path, { ...init, headers: { "Content-Type": "application/json" } });
     const body = await response.json().catch(() => null);
@@ -20,7 +20,7 @@ export async function callCatalogApi<Body>(path: string, init: RequestInit): Pro
 
 export function ApiFailureMessage({ failure }: { failure: ApiFailure }) {
   return (
-    <div role="alert" data-testid="catalog-error" className="text-sm text-destructive">
+    <div role="alert" data-testid="api-error" className="text-sm text-destructive">
       <p>{failure.message}</p>
       {failure.fields.length > 0 && (
         <ul className="mt-1 list-disc pl-5">

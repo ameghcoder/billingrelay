@@ -6,7 +6,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 if (existsSync(".env.local")) process.loadEnvFile(".env.local");
 
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3100";
-const ADMIN_DIR = "apps/web/app/admin";
+const APP_DIR = "apps/web/app";
+const ADMIN_DIR = `${APP_DIR}/admin`;
+const V1_DIR = `${APP_DIR}/v1`;
 const RATE_LIMIT_WINDOW_MS = 11_000;
 const email = process.env.OPERATOR_EMAIL!;
 const password = process.env.OPERATOR_PASSWORD!;
@@ -27,24 +29,29 @@ const sessionCookie = (res: Response) =>
     .map((cookie) => cookie.split(";")[0]!)
     .find((cookie) => cookie.includes("session_token") && !cookie.endsWith("="));
 
-function adminUrlPath(file: string): string {
-  const parts = relative(ADMIN_DIR, join(file, "..")).split(sep).filter(Boolean);
+function urlPath(file: string): string {
+  const parts = relative(APP_DIR, join(file, "..")).split(sep).filter(Boolean);
   const segments = parts
     .filter((part) => !/^\(.*\)$/.test(part))
     .map((part) => part.replace(/^\[+\.*(.+?)\]+$/, "$1"));
-  return ["/admin", ...segments].join("/");
+  return ["", ...segments].join("/");
 }
 
-const adminFiles = readdirSync(ADMIN_DIR, { recursive: true, encoding: "utf8" }).map((f) => join(ADMIN_DIR, f));
-const pages = adminFiles.filter((f) => f.endsWith("page.tsx"));
-const routes = adminFiles
-  .filter((f) => f.endsWith("route.ts"))
-  .flatMap((file) => {
-    const source = readFileSync(file, "utf8");
-    const methods = [...source.matchAll(/export\s+(?:const|async function|function)\s+(GET|POST|PUT|PATCH|DELETE)\b/g)];
-    expect(methods.length, `${file} exports no HTTP methods`).toBeGreaterThan(0);
-    return methods.map((m) => ({ method: m[1]!, path: adminUrlPath(file) }));
-  });
+const filesIn = (dir: string) => readdirSync(dir, { recursive: true, encoding: "utf8" }).map((f) => join(dir, f));
+
+const routesIn = (dir: string) =>
+  filesIn(dir)
+    .filter((f) => f.endsWith("route.ts"))
+    .flatMap((file) => {
+      const source = readFileSync(file, "utf8");
+      const methods = [...source.matchAll(/export\s+(?:const|async function|function)\s+(GET|POST|PUT|PATCH|DELETE)\b/g)];
+      expect(methods.length, `${file} exports no HTTP methods`).toBeGreaterThan(0);
+      return methods.map((m) => ({ method: m[1]!, path: urlPath(file) }));
+    });
+
+const pages = filesIn(ADMIN_DIR).filter((f) => f.endsWith("page.tsx"));
+const routes = routesIn(ADMIN_DIR);
+const v1Routes = routesIn(V1_DIR);
 
 describe("without a session", () => {
   it("finds admin pages and routes to check", () => {
@@ -52,7 +59,7 @@ describe("without a session", () => {
     expect(routes.length).toBeGreaterThan(0);
   });
 
-  it.each(pages.map((file) => adminUrlPath(file)))("page %s redirects to /login", async (path) => {
+  it.each(pages.map((file) => urlPath(file)))("page %s redirects to /login", async (path) => {
     const res = await request(path);
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toContain("/login");
@@ -69,6 +76,18 @@ describe("without a session", () => {
       headers: { Cookie: "better-auth.session_token=forged.forged" },
     });
     expect(res.status).toBe(401);
+  });
+});
+
+describe("without an API key", () => {
+  it("finds /v1 routes to check", () => {
+    expect(v1Routes.length).toBeGreaterThan(0);
+  });
+
+  it.each(v1Routes)("$method $path returns 401 with no data", async ({ method, path }) => {
+    const res = await request(path, { method });
+    expect(res.status).toBe(401);
+    expect((await res.json()).error.code).toBe("invalid_api_key");
   });
 });
 

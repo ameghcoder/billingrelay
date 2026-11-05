@@ -4,11 +4,14 @@ export const CATALOG_CURRENCIES = ["USD", "EUR", "GBP", "CAD", "AUD"] as const;
 export const PRODUCT_KINDS = ["one_time", "subscription", "credit_pack"] as const;
 export const FIELD_TYPES = ["text", "number", "integer", "boolean", "enum"] as const;
 
-const MAX_PRICE = 99_999_999;
+export const MAX_PRICE = 99_999_999;
 const MAX_CREDITS = 1_000_000_000;
 const MAX_TEXT_LENGTH = 1_000;
 
-const refSchema = z
+// Control characters and broken Unicode would reach PayPal and the database as something other than what was sent.
+export const hasUnsafeCharacters = (text: string) => /[\p{Cc}\p{Cs}]/u.test(text);
+
+export const refSchema = z
   .string({ error: "Enter a ref" })
   .regex(/^[a-z0-9][a-z0-9_-]{0,63}$/, "Use lowercase letters, numbers, - and _, up to 64 characters");
 
@@ -18,9 +21,14 @@ export const fieldKeySchema = z
   .regex(/^[a-z][a-z0-9_]{0,63}$/, "Use lowercase letters, numbers and _, starting with a letter")
   .refine((key) => key !== "constructor", "This name is reserved");
 
-const nameSchema = z.string({ error: "Enter a name" }).trim().min(1, "Enter a name").max(120);
+export const nameSchema = z
+  .string({ error: "Enter a name" })
+  .trim()
+  .min(1, "Enter a name")
+  .max(120)
+  .refine((name) => !hasUnsafeCharacters(name), "Remove control characters");
 
-const priceSchema = z.strictObject({
+export const priceSchema = z.strictObject({
   amount: z
     .int({ error: "Must be a whole number of minor units: 2900 means USD 29.00" })
     .positive("Must be more than 0")
@@ -28,7 +36,7 @@ const priceSchema = z.strictObject({
   currency: z.enum(CATALOG_CURRENCIES, { error: `Use ${CATALOG_CURRENCIES.join(", ")}` }),
 });
 
-const accessBenefitSchema = z.strictObject({
+export const accessBenefitSchema = z.strictObject({
   kind: z.literal("access", { error: "This product kind can't grant this benefit" }),
   key: refSchema,
 });
@@ -76,7 +84,7 @@ const variantBase = {
   price: priceSchema,
 };
 
-const quantitySchema = z
+export const quantitySchema = z
   .int({ error: "Must be a whole number" })
   .min(1, "Must be 1 or more")
   .max(100, "Must be 100 or less")
@@ -238,10 +246,10 @@ export function attributesSchema(fields: CatalogField[]) {
 
 export const attributesJsonSchema = (fields: CatalogField[]) => z.toJSONSchema(attributesSchema(fields));
 
-export type CatalogIssue = { path: string; message: string };
+export type FieldIssue = { path: string; message: string };
 
 /** Flattens Zod's issues so each one names an exact field, including each unknown key. */
-export function toCatalogIssues(error: z.ZodError): CatalogIssue[] {
+export function toFieldIssues(error: z.ZodError): FieldIssue[] {
   return error.issues.flatMap((issue) =>
     issue.code === "unrecognized_keys"
       ? issue.keys.map((key) => ({ path: [...issue.path, key].join("."), message: "This field isn't supported" }))
@@ -250,7 +258,7 @@ export function toCatalogIssues(error: z.ZodError): CatalogIssue[] {
 }
 
 /** Past purchases of a ref mean what its kind meant then, so a different kind needs a new ref. */
-export function findKindChanges(next: CatalogConfig, live: CatalogConfig | null): CatalogIssue[] {
+export function findKindChanges(next: CatalogConfig, live: CatalogConfig | null): FieldIssue[] {
   const liveKinds = new Map(live?.products.map((product) => [product.ref, product.kind]));
   return next.products.flatMap((product, index) => {
     const liveKind = liveKinds.get(product.ref);

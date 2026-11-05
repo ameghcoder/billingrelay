@@ -1,9 +1,10 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
 const VERSION = "v1";
 const ALGORITHM = "aes-256-gcm";
 const KEY_BYTES = 32;
 const IV_BYTES = 12;
+const API_KEY_BYTES = 32;
 
 /** Deliberately carries no detail: anything here could end up in a log. */
 export class SecretUnreadableError extends Error {
@@ -51,4 +52,13 @@ export function decryptSecret(encoded: string, binding: string): string {
   } catch {
     throw new SecretUnreadableError();
   }
+}
+
+// SHA-256 is enough: slow hashes protect guessable passwords, and an API key is 256 random bits.
+export const hashApiKey = (key: string) => createHash("sha256").update(key).digest("hex");
+
+/** Only the hash and the last 4 characters get stored. `key` is shown to the operator once. */
+export function generateApiKey(environment: "sandbox" | "live") {
+  const key = `br_${environment}_${randomBytes(API_KEY_BYTES).toString("base64url")}`;
+  return { key, keyHash: hashApiKey(key), lastFour: key.slice(-4) };
 }

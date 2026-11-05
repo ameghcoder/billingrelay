@@ -1,6 +1,6 @@
 import { getCatalogVersion, getDefaultProjectId, listCatalogVersions } from "@billingrelay/db";
 import { notFound } from "next/navigation";
-import { catalogScope } from "@/lib/catalog";
+import { sandboxScope } from "@/lib/admin-routes";
 import { requireOperatorPage } from "@/lib/operator";
 import { ProductForm } from "./product-form";
 
@@ -9,7 +9,7 @@ export default async function ProductPage({ searchParams }: { searchParams: Prom
   const projectId = await getDefaultProjectId();
   if (!projectId) return <p className="text-muted-foreground">Run pnpm db:seed to create the project.</p>;
 
-  const scope = catalogScope(projectId);
+  const scope = sandboxScope(projectId);
   const [latest] = await listCatalogVersions(scope);
   const catalog = latest ? await getCatalogVersion(scope, latest.id) : null;
 

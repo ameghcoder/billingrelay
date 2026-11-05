@@ -6,10 +6,12 @@ Status: **proposed (M00)**. Shapes become Zod schemas in M01; this doc stays the
 
 - JSON over HTTPS. Amounts are integer minor units (`1900` = USD 19.00) with an ISO 4217 `currency`.
 - Internal IDs are UUIDv7. The merchant's own user ID is `externalCustomerId` (string, 1–128 chars).
-- Every mutating `/v1` call takes an `Idempotency-Key` header. The key, a hash of the normalized
-  payload and the result are stored. The same key with the same payload returns the stored result;
-  the same key with a different payload returns `409 idempotency_conflict`.
-- Errors: `{ "error": { "code": "snake_case", "message": "...", "details": {} } }`.
+- Every call that creates something on `/v1` takes an `Idempotency-Key` header: 1 to 255 printable characters, no spaces. The key,
+  a hash of the normalized payload and the result are stored. The same key with the same payload returns the stored result;
+  the same key with a different payload returns `409 idempotency_conflict`. JSON key order and a left-out default don't count
+  as different. A refused request stores nothing, so its key can be used again.
+- Unknown fields are refused, not ignored. `/v1` sends no CORS headers, so a website's script can't call it.
+- Errors: `{ "error": { "code": "snake_case", "message": "...", "details": {} } }`. A validation error lists each field in `details.fields`.
 
 | Status | Meaning |
 |---|---|
@@ -18,6 +20,7 @@ Status: **proposed (M00)**. Shapes become Zod schemas in M01; this doc stays the
 | 403 | Credential valid but not allowed (wrong project, wrong environment) |
 | 404 | Not found within this project |
 | 409 | Idempotency conflict, or state conflict (e.g. an active subscription already exists) |
+| 413 | Request body over 64 KB |
 | 422 | Valid request a business rule rejects (insufficient credits, expired quote) |
 | 502 | PayPal call failed; the outcome is known to be "not done" |
 | 503 | PayPal outcome unknown; the operation is recorded as unresolved, never retried as a new charge |
@@ -29,13 +32,53 @@ The API key determines the project and environment (sandbox/live). The merchant 
 
 | Operation | Purpose |
 |---|---|
-| `POST /v1/quotes` | Immutable one-time price snapshot: customer, items, quantity, amount, currency, expiry. |
+| `POST /v1/quotes` | Immutable one-time price snapshot: customer, one item, quantity, amount, currency, benefits, expiry. `201` when created, `200` for a retry. See below. |
+| `POST /v1/quotes/:id/check` | `{ externalCustomerId }`. Returns the stored quote if this customer can still use it. `422 quote_customer_mismatch`, `422 quote_expired`, `404` outside this project or environment. Checkout applies the same rule. |
 | `POST /v1/checkouts` | Start checkout from `{ productRef, variantRef? }` or `{ quoteId }`, plus `externalCustomerId` and `returnUrl` (allowlisted). Returns `{ id, checkoutUrl }`. |
 | `GET /v1/checkouts/:id` | Money, fulfillment and sync status kept separate, plus the safe next action. |
 | `GET /v1/customers/:externalCustomerId/billing` | Purchases, subscriptions, access, credit balance, `version`. |
 | `POST /v1/subscriptions/:id/cancel` | Cancel at PayPal; access remains until `paidThrough`. |
 | `POST /v1/credits/consume` | Atomic debit: `{ externalCustomerId, amount, usageId }`. The same `usageId` returns the prior result. |
 | `POST /v1/usage/:usageId/compensate` | One compensation linked to the original debit. |
+
+A quote takes one of two forms, plus optional `quantity` (default 1), `expiresInSeconds` (60 to 3600, default 1800) and `metadata`
+(up to 20 text values, stored for tracing and never acted on):
+
+```jsonc
+// Price from the live catalog. Sending a price here returns 400.
+{ "externalCustomerId": "app-user-42", "productRef": "template", "variantRef": "extended-license" }
+
+// The merchant's own catalog: its backend names the price. One-time only. `benefits` is optional: one access benefit or none, never credits.
+{ "externalCustomerId": "app-user-42", "item": { "ref": "poster-42", "name": "Poster #42" }, "unitAmount": 1500, "currency": "USD" }
+```
+
+Refusals that store nothing, all `422`: `no_live_catalog`, `unknown_product`, `unknown_variant`, `variant_required` (the product has several
+variants), `not_quotable` (a subscription), `quantity_too_large`, `amount_too_large` (the total is over 99,999,999 minor units),
+`product_in_catalog` (a merchant-priced `item.ref` matches a live catalog product).
+
+```json
+{
+  "id": "0193…",
+  "externalCustomerId": "app-user-42",
+  "status": "open | expired",
+  "expiresAt": "2026-11-06T10:30:00.000Z",
+  "snapshot": {
+    "source": "catalog | merchant",
+    "catalogVersion": 4,
+    "product": { "ref": "template", "name": "Creator template", "kind": "one_time" },
+    "variant": { "ref": "extended-license", "name": "Extended", "attributes": { "license": "extended" } },
+    "quantity": 1,
+    "unitAmount": 2900,
+    "amount": 2900,
+    "currency": "USD",
+    "benefits": [{ "kind": "access", "key": "commercial-use" }],
+    "metadata": {}
+  }
+}
+```
+
+`catalogVersion` and `variant` are `null` for a merchant-priced quote. `benefits` are per unit. A retry returns the same quote even after
+it expires, marked `expired`; a new price needs a new `Idempotency-Key`.
 
 Checkout status shape:
 
@@ -82,6 +125,9 @@ used as an environment: `live` returns `422 live_disabled` before any PayPal cal
 | `PUT /admin/paypal/connections/:environment` | Check credentials with PayPal, encrypt and save the secret, set up the webhook, run the check. `422` if PayPal rejects them and `503` if it can't be reached; both save nothing. |
 | `POST /admin/paypal/connections/:environment/check` | Read-only health and capability check. |
 | `POST /admin/paypal/connections/:environment/webhook` | Set up the webhook again (safe to repeat), then run the check. |
+| `GET /admin/developers/api-keys` | API keys: name, last 4 characters, status. Never the key or its hash. |
+| `POST /admin/developers/api-keys` | `{ name }`. Returns `201` with the full `key`, the only time it's ever shown. Only its SHA-256 hash and last 4 characters are stored. |
+| `POST /admin/developers/api-keys/:id/revoke` | Stops the key on its next request. Safe to repeat. Quotes it created stay as they are. |
 | `GET /admin/config/drafts` | Saved catalog versions, newest first, with which one is live. |
 | `POST /admin/config/drafts` | `{ baseVersion, config }`, the whole catalog. Saves it as a new version and returns `201 { id, version }`. `400 invalid_config` names each field in `details.fields` and stores nothing. `409 version_conflict` returns `latestVersion` if `baseVersion` is no longer the latest. Doesn't change what's live. |
 | `GET /admin/config/drafts/:id` | One version: its stored config and a JSON Schema for each product's attributes. |

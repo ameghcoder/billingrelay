@@ -3,7 +3,7 @@ import {
   fieldKeySchema,
   minorUnitsFromText,
   textFromMinorUnits,
-  toCatalogIssues,
+  toFieldIssues,
   type CatalogBenefit,
   type CatalogField,
   type CatalogProduct,
@@ -190,7 +190,7 @@ export const productResolver: Resolver<ProductValues, unknown, CatalogProduct> =
   if (result.success) return { values: result.data, errors: {} };
 
   const errors: FieldErrors<ProductValues> = {};
-  for (const issue of toCatalogIssues(result.error)) {
+  for (const issue of toFieldIssues(result.error)) {
     const { path, message } = toFormError(issue.path, issue.message);
     if (!get(errors, path)) set(errors, path, { type: "validation", message });
   }

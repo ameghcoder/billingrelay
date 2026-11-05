@@ -19,7 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { ApiFailureMessage, callCatalogApi, type ApiFailure } from "../catalog-api";
+import { ApiFailureMessage, callAdminApi, type ApiFailure } from "@/components/admin-api";
 import { KIND_LABELS, MONTHLY_CREDITS_RULE, PACK_CREDITS_RULE } from "../labels";
 import {
   fromProduct,
@@ -218,7 +218,7 @@ export function ProductForm({
   async function saveCatalog(nextProducts: CatalogProduct[]) {
     setBusy(true);
     setFailure(null);
-    const result = await callCatalogApi<{ version: number }>("/admin/config/drafts", {
+    const result = await callAdminApi<{ version: number }>("/admin/config/drafts", {
       method: "POST",
       body: JSON.stringify({ baseVersion, config: { products: nextProducts } }),
     });

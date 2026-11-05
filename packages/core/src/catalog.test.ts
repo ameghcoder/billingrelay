@@ -8,7 +8,7 @@ import {
   formatPrice,
   minorUnitsFromText,
   textFromMinorUnits,
-  toCatalogIssues,
+  toFieldIssues,
   type CatalogConfig,
   type CatalogField,
 } from "./catalog";
@@ -64,7 +64,7 @@ const creditPack = (overrides: object = {}) => ({
 
 const issuesFor = (...products: object[]) => {
   const result = catalogConfigSchema.safeParse({ products });
-  return result.success ? [] : toCatalogIssues(result.error);
+  return result.success ? [] : toFieldIssues(result.error);
 };
 
 /** Fails with the full issue list, so a wrong path shows what was reported instead. */
@@ -282,13 +282,13 @@ describe("unsupported features", () => {
       "products.0.variants.0.benefits.0.expiresIn",
     );
     const result = catalogConfigSchema.safeParse({ products: [creditPack()], extra: true });
-    expect(toCatalogIssues(result.error!).map((issue) => issue.path)).toEqual(["extra"]);
+    expect(toFieldIssues(result.error!).map((issue) => issue.path)).toEqual(["extra"]);
   });
 });
 
 describe("size limits", () => {
   it("refuses an empty catalog and too many products", () => {
-    expect(toCatalogIssues(catalogConfigSchema.safeParse({ products: [] }).error!)[0]!.path).toBe("products");
+    expect(toFieldIssues(catalogConfigSchema.safeParse({ products: [] }).error!)[0]!.path).toBe("products");
     const products = Array.from({ length: 51 }, (_, index) => creditPack({ ref: `pack-${index}` }));
     expectIssue(products, "products");
   });

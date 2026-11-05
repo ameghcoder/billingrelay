@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
 import { closePools, getDb, requireEnv } from "./client";
-import { account, user } from "./schema";
+import { account, project, user } from "./schema";
 
 const MIN_PASSWORD_LENGTH = 12;
 
@@ -32,6 +32,14 @@ if (existing) {
     });
   });
   console.log("Operator created");
+}
+
+const [existingProject] = await db.select({ id: project.id }).from(project).limit(1);
+if (existingProject) {
+  console.log("Project already exists; nothing changed");
+} else {
+  await db.insert(project).values({ name: "Default project" });
+  console.log("Project created");
 }
 
 await closePools();

@@ -72,9 +72,16 @@ when no destination is set), and `ok` or `stale` for the worker. It returns `200
 Without a session, `/admin` pages redirect to `/login`, and `/admin` API routes return `401 unauthorized`. There is no signup; the one
 operator is seeded. `POST /api/auth/sign-in/email` and `POST /api/auth/sign-out` are Better Auth's own routes.
 
+Non-GET `/admin` routes also require an `Origin` header matching `BETTER_AUTH_URL`, otherwise `403 forbidden_origin`. Only `sandbox` can be
+used as an environment: `live` returns `422 live_disabled` before any PayPal call.
+
 | Operation | Purpose |
 |---|---|
 | `GET /admin/me` | The signed-in operator. |
+| `GET /admin/paypal/connections` | Safe readback: masked client ID, webhook status, capabilities, last check. Never the secret. |
+| `PUT /admin/paypal/connections/:environment` | Check credentials with PayPal, encrypt and save the secret, set up the webhook, run the check. `422` if PayPal rejects them and `503` if it can't be reached; both save nothing. |
+| `POST /admin/paypal/connections/:environment/check` | Read-only health and capability check. |
+| `POST /admin/paypal/connections/:environment/webhook` | Set up the webhook again (safe to repeat), then run the check. |
 | `POST /admin/config/drafts` | AI or manual billing config draft (versioned). |
 | `POST /admin/config/drafts/:id/validate` | Schema and capability validation, plus a fixture preview labelled as simulation. |
 | `POST /admin/config/drafts/:id/approve` | Approval bound to project, environment and exact draft version. |

@@ -1,4 +1,6 @@
-import { boolean, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, check, integer, jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { v7 as uuidv7 } from "uuid";
 
 // Better Auth expects these four tables and column names.
 export const user = pgTable("user", {
@@ -56,3 +58,35 @@ export const workerHeartbeat = pgTable("worker_heartbeat", {
   id: integer("id").primaryKey().default(1),
   lastBeatAt: timestamp("last_beat_at", { withTimezone: true }).notNull(),
 });
+
+export const project = pgTable("project", {
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const paypalConnection = pgTable(
+  "paypal_connection",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id),
+    environment: text("environment").$type<"sandbox" | "live">().notNull(),
+    clientId: text("client_id").notNull(),
+    secretEncrypted: text("secret_encrypted").notNull(),
+    webhookId: text("webhook_id"),
+    webhookStatus: text("webhook_status").$type<"registered" | "not_registered">().notNull().default("not_registered"),
+    webhookError: text("webhook_error"),
+    capabilities: jsonb("capabilities").$type<{ checkout: boolean; subscriptions: boolean; webhooks: boolean }>(),
+    lastCheck: text("last_check"),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("paypal_connection_project_environment_unique").on(table.projectId, table.environment),
+    check("paypal_connection_environment_check", sql`${table.environment} IN ('sandbox', 'live')`),
+    check("paypal_connection_webhook_status_check", sql`${table.webhookStatus} IN ('registered', 'not_registered')`),
+  ],
+);

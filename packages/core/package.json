@@ -1,0 +1,20 @@
+{
+  "name": "@billingrelay/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./paypal-connection": "./src/paypal-connection.ts",
+    "./secrets": "./src/secrets.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3"
+  }
+}

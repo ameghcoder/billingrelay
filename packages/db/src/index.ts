@@ -8,3 +8,12 @@ export {
   type DestinationStatus,
   type WorkerStatus,
 } from "./health";
+export {
+  getDefaultProjectId,
+  getPaypalConnection,
+  getPaypalConnectionSecret,
+  savePaypalCredentials,
+  updatePaypalConnectionStatus,
+  type PaypalConnectionRecord,
+  type PaypalConnectionStatus,
+} from "./paypal-connections";

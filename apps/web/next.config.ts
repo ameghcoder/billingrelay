@@ -6,7 +6,7 @@ const rootEnvFile = "../../.env.local";
 if (existsSync(rootEnvFile)) process.loadEnvFile(rootEnvFile);
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@billingrelay/db"],
+  transpilePackages: ["@billingrelay/core", "@billingrelay/db", "@billingrelay/provider-paypal"],
 };
 
 export default nextConfig;

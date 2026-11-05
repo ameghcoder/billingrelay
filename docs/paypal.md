@@ -31,6 +31,21 @@ Unsupported operations return explicit errors. Keep raw PayPal state and object 
 
 We don't select "All": unhandled types add noise to the inbox, traces and AI evidence.
 
+## Connection
+
+The operator enters a sandbox client ID and secret at `/admin/paypal`. Nothing is saved until PayPal accepts them.
+
+- **Secret:** AES-256-GCM with `SECRETS_ENCRYPTION_KEY`, bound to the project and environment, so a value copied to another record won't
+  decrypt. No API returns it. If the key is lost, the operator enters the secret again.
+- **Webhook:** BillingRelay sets it up at `PUBLIC_BASE_URL/webhooks/paypal/<connection ID>`. It looks for that exact URL first, so repeating
+  it or retrying after a timeout leaves one webhook. It never changes any other webhook on the PayPal app.
+- **Capabilities** come from the scopes on the access token: `services/payments/payment/authcapture` (one-time checkout),
+  `services/subscriptions` and `services/applications/webhooks`.
+- **Addresses:** PayPal's API addresses are constants in the client, picked by each connection's `environment`. They aren't env vars, because
+  one deploy can hold both environments, and a wrong value would send real credentials to the wrong host.
+- **Live is disabled.** The API refuses `live` before any call, and `withSandbox` in `apps/web/lib/paypal-routes.ts` is that gate. Enabling live
+  also means removing the `"sandbox"` values in `saveConnection` and `getSandboxConnection`, and it needs its own review and check.
+
 ## Observed in sandbox
 
 1. **Correlation.** Without `custom_id`, events link only by PayPal IDs. Set `purchase_units[].custom_id` on orders and
@@ -56,5 +71,5 @@ We don't select "All": unhandled types add noise to the inbox, traces and AI evi
 
 - Approve payments with a **US personal** sandbox account. The default personal account failed with "This seller doesn't accept
   payments in your currency", and a US one worked. The likely cause is an India-registered default account (not confirmed).
-- Local webhooks need a public HTTPS tunnel (ngrok). A static domain avoids re-registering the webhook after each restart.
-- The webhook ID goes in `PAYPAL_WEBHOOK_ID`. It's the ID PayPal shows after saving, not the URL.
+- Local webhooks need a public HTTPS tunnel (ngrok). A static domain avoids re-registering the webhook after each restart. Its address goes
+  in `PUBLIC_BASE_URL`.

@@ -44,8 +44,22 @@ curl -X POST http://localhost:3100/v1/quotes \
 Keep the key on your server and take `externalCustomerId` from your own session, never from the browser. Retrying with the same `Idempotency-Key`
 returns the same quote. See `docs/api-contract.md`.
 
+To take a payment, add your app's origin under **Developers**, in **Allowed return URLs**, and start a checkout from a quote or the live catalog:
+
+```sh
+curl -X POST http://localhost:3100/v1/checkouts \
+  -H "Authorization: Bearer $BILLINGRELAY_API_KEY" \
+  -H "Idempotency-Key: checkout-1234" \
+  -H "Content-Type: application/json" \
+  -d '{ "externalCustomerId": "app-user-42", "quoteId": "<quote id>", "returnUrl": "https://app.example.com/billing/return" }'
+```
+
+Send the buyer to the `checkoutUrl` it returns, which uses `PUBLIC_BASE_URL`. They come back to your `returnUrl` with `?checkout=<id>`. That redirect proves nothing, so ask
+`GET /v1/checkouts/:id` from your backend. In sandbox, approve with a US personal sandbox account. On ngrok's free plan, the buyer first sees one warning page from ngrok.
+
 `pnpm test` runs the unit tests. With the stack running, `pnpm test:e2e` runs the end-to-end tests. `E2E_WRITE_DB=1` adds the tests that save catalog
-versions, API keys and quotes, so use it only on a throwaway database.
+versions, API keys and quotes, so use it only on a throwaway database. Adding `E2E_PAYPAL=1`, with `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` set, also makes real, unapproved
+sandbox orders.
 
 **Credits.** Monthly credits from a subscription last for the paid month: unused ones don't carry over, and a customer who cancels keeps them until
 that month ends. Credit packs never expire and are spent after monthly credits. The ledger that enforces this arrives with credit packs and usage.
@@ -67,8 +81,12 @@ Only capabilities with a recorded proof are marked verified.
 | Catalog: products, variants, prices, versions, activation | ✅ verified locally | `tests/e2e/catalog.test.ts` against a production build; not yet hosted, and no checkout reads it yet |
 | Catalog currencies | ⚠️ USD proven with a real payment | EUR, GBP, CAD and AUD pass validation, but no real payment has been made in them |
 | Monthly credits expire, packs don't | ⬜ not built | Rule decided and stated; the ledger comes later |
-| API keys and trusted quotes: fixed price, customer binding, expiry, safe retries | ✅ verified locally | `tests/e2e/quotes.test.ts` against a production build; not yet hosted, and no payment uses a quote yet |
-| BillingRelay checkout, inbox and ledger | ⬜ not built | |
+| API keys and trusted quotes: fixed price, customer binding, expiry, safe retries | ✅ verified locally | `tests/e2e/quotes.test.ts` against a production build; a real payment used one; not yet hosted |
+| BillingRelay checkout: real sandbox purchase, one order, one capture | ✅ verified locally | Capture `3GN46362VS501844G` by a real sandbox buyer, `tests/e2e/checkouts.test.ts`; not yet hosted |
+| Unknown outcomes never charge twice: lost answer, hang, server killed mid-capture | ✅ verified locally | Lost answer and hang injected on real orders, kill was real; PayPal showed one capture each time |
+| Webhook route: verified and stored before acknowledging | ✅ verified locally | Real events through a tunnel, replayed and altered; not yet processed by a worker |
+| Declined and pending captures | ⚠️ handling verified | Decline used PayPal's mock header; pending was injected |
+| Inbox processing and ledger | ⬜ not built | |
 | Credit packs and atomic consumption | ⬜ not built | |
 | One-way sync to an independent Postgres | ⬜ not built | |
 | AI billing setup (reviewed draft) | ⬜ not built | |

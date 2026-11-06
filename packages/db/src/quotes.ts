@@ -1,6 +1,7 @@
 import type { QuoteSnapshot } from "@billingrelay/core/quotes";
 import { and, eq, sql, TransactionRollbackError } from "drizzle-orm";
 import { getDb } from "./client";
+import { ensureCustomer } from "./customers";
 import { customer, quote, type ProjectScope } from "./schema";
 
 export type QuoteRecord = {
@@ -57,22 +58,14 @@ export async function createQuote(
   const { projectId, environment, externalCustomerId, idempotencyKey, expiresInSeconds } = values;
   try {
     return await getDb().transaction(async (tx) => {
-      await tx
-        .insert(customer)
-        .values({ projectId, externalCustomerId })
-        .onConflictDoNothing({ target: [customer.projectId, customer.externalCustomerId] });
-      // A separate statement sees a row another request committed while this one waited on the insert above.
-      const [owner] = await tx
-        .select({ id: customer.id })
-        .from(customer)
-        .where(and(eq(customer.projectId, projectId), eq(customer.externalCustomerId, externalCustomerId)));
+      const customerId = await ensureCustomer(tx, projectId, externalCustomerId);
 
       const [created] = await tx
         .insert(quote)
         .values({
           projectId,
           environment,
-          customerId: owner!.id,
+          customerId,
           apiKeyId: values.apiKeyId,
           idempotencyKey,
           payloadHash: values.payloadHash,

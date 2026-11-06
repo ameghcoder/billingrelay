@@ -83,10 +83,12 @@ describe.runIf(process.env.E2E_PAYPAL === "1")("real PayPal sandbox", { timeout:
   const readBack = async () => (await (await send(CONNECTIONS)).json()).connections;
 
   it("rejects a wrong secret and saves nothing", async () => {
+    // Not "no connection": other test files may have connected first.
+    const before = await readBack();
     const res = await save({ clientId, clientSecret: "wrong-secret" });
     expect(res.status).toBe(422);
     expect((await res.json()).error.code).toBe("paypal_credentials_rejected");
-    expect(await readBack()).toEqual([]);
+    expect(await readBack()).toEqual(before);
   });
 
   it("connects, and returns only safe fields", async () => {

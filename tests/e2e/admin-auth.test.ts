@@ -49,6 +49,16 @@ const routesIn = (dir: string) =>
       return methods.map((m) => ({ method: m[1]!, path: urlPath(file) }));
     });
 
+// Anything outside /admin and /v1 has no credential. A new one fails below until it's added here, on purpose.
+const PUBLIC_ROUTES = ["/api/auth/all", "/api/health", "/checkout/id/confirm", "/checkout/id/pay", "/webhooks/paypal/connectionId"];
+const PUBLIC_PAGES = ["", "/checkout/id", "/checkout/id/return", "/login"];
+
+const outsideProtectedFolders = (suffix: string) =>
+  filesIn(APP_DIR)
+    .filter((f) => f.endsWith(suffix) && !f.startsWith(`${ADMIN_DIR}${sep}`) && !f.startsWith(`${V1_DIR}${sep}`))
+    .map(urlPath)
+    .sort();
+
 const pages = filesIn(ADMIN_DIR).filter((f) => f.endsWith("page.tsx"));
 const routes = routesIn(ADMIN_DIR);
 const v1Routes = routesIn(V1_DIR);
@@ -88,6 +98,13 @@ describe("without an API key", () => {
     const res = await request(path, { method });
     expect(res.status).toBe(401);
     expect((await res.json()).error.code).toBe("invalid_api_key");
+  });
+});
+
+describe("public routes", () => {
+  it("are only the ones on the written list", () => {
+    expect(outsideProtectedFolders("route.ts")).toEqual(PUBLIC_ROUTES);
+    expect(outsideProtectedFolders("page.tsx")).toEqual(PUBLIC_PAGES);
   });
 });
 

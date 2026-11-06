@@ -25,3 +25,8 @@ Status: accepted, 2026-10-28 to 2026-11-05.
 16. **A quote never changes and has no stored status.** Removing a product doesn't cancel its open quotes; they run out within 60 minutes. Expiry is worked out
     from the database's clock on each read.
 17. **API keys are stored as SHA-256 hashes.** Slow hashes protect guessable passwords, and these are 256 random bits checked on every request.
+18. **The PayPal order is created on the Pay click, and a checkout lasts 1 hour.** An abandoned checkout leaves nothing at PayPal, and starting one doesn't depend on
+    PayPal being up. A buyer who approves after the hour isn't charged, because nothing is charged until our capture.
+19. **One quote gets one checkout, ever.** It's simple and impossible to pay twice, at the cost of one extra call when a checkout fails or expires.
+20. **The webhook route only verifies and stores.** A buyer who approves and never returns isn't captured until the worker handles the stored event, or they reopen the
+    link. Capturing inside the request would put billing logic before the acknowledgement.

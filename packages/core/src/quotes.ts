@@ -58,6 +58,8 @@ export const merchantQuoteRequestSchema = z.strictObject({
 type CatalogQuoteRequest = z.output<typeof catalogQuoteRequestSchema>;
 type MerchantQuoteRequest = z.output<typeof merchantQuoteRequestSchema>;
 export type QuoteRequest = CatalogQuoteRequest | MerchantQuoteRequest;
+// A checkout prices the same way, with its own expiry.
+type PricedRequest = Omit<CatalogQuoteRequest, "expiresInSeconds"> | Omit<MerchantQuoteRequest, "expiresInSeconds">;
 
 /** `item` picks the form, so that form's strict rules can name any field that doesn't belong. */
 export function parseQuoteRequest(body: unknown) {
@@ -97,7 +99,7 @@ type LiveCatalog = { version: number; config: CatalogConfig };
 
 const refuse = (code: string, message: string): QuoteRefusal => ({ code, message });
 
-function priceFromCatalog(request: CatalogQuoteRequest, live: LiveCatalog | null): PricedItem | QuoteRefusal {
+function priceFromCatalog(request: Omit<CatalogQuoteRequest, "expiresInSeconds">, live: LiveCatalog | null): PricedItem | QuoteRefusal {
   if (!live) return refuse("no_live_catalog", "Nothing is live in this project's catalog yet");
 
   const product = live.config.products.find((candidate) => candidate.ref === request.productRef);
@@ -123,7 +125,7 @@ function priceFromCatalog(request: CatalogQuoteRequest, live: LiveCatalog | null
   };
 }
 
-function priceFromMerchant(request: MerchantQuoteRequest, live: LiveCatalog | null): PricedItem | QuoteRefusal {
+function priceFromMerchant(request: Omit<MerchantQuoteRequest, "expiresInSeconds">, live: LiveCatalog | null): PricedItem | QuoteRefusal {
   if (live?.config.products.some((product) => product.ref === request.item.ref)) {
     return refuse("product_in_catalog", `"${request.item.ref}" is in the live catalog, so its price comes from there. Send productRef instead`);
   }
@@ -139,7 +141,7 @@ function priceFromMerchant(request: MerchantQuoteRequest, live: LiveCatalog | nu
 }
 
 /** Works out the price and what the purchase grants. The stored result is never recalculated. */
-export function buildQuoteSnapshot(request: QuoteRequest, live: LiveCatalog | null): { snapshot: QuoteSnapshot } | { refusal: QuoteRefusal } {
+export function buildQuoteSnapshot(request: PricedRequest, live: LiveCatalog | null): { snapshot: QuoteSnapshot } | { refusal: QuoteRefusal } {
   const priced = "item" in request ? priceFromMerchant(request, live) : priceFromCatalog(request, live);
   if ("code" in priced) return { refusal: priced };
 
@@ -149,7 +151,7 @@ export function buildQuoteSnapshot(request: QuoteRequest, live: LiveCatalog | nu
   return { snapshot: { ...priced, quantity: request.quantity, amount, metadata: request.metadata } };
 }
 
-/** The one rule for whether a stored quote can be used. M05's checkout calls this too. */
+/** The one rule for whether a stored quote can be used. Checkout calls this too. */
 export function refuseQuoteUse(quote: { externalCustomerId: string; isExpired: boolean }, externalCustomerId: string): QuoteRefusal | null {
   if (quote.externalCustomerId !== externalCustomerId) return refuse("quote_customer_mismatch", "This quote belongs to another customer");
   if (quote.isExpired) return refuse("quote_expired", "This quote has expired. Create a new one with a new Idempotency-Key");

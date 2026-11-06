@@ -38,6 +38,21 @@ A quote's price comes from one of two places:
 
 A stored quote never changes. Later catalog edits don't affect it, including removing its product: it keeps its price until it expires.
 
+**Checkout.** A checkout holds its own copy of the snapshot, and it never changes. The PayPal order is created when the buyer clicks Pay, not
+before, so an abandoned checkout leaves nothing at PayPal.
+
+| Area | Rule |
+|---|---|
+| Quote use | One quote gets one checkout, ever. If that checkout fails or expires, the merchant makes a new quote |
+| Life | 1 hour from creation, by the database's clock, so a price lasts 2 hours at most. A buyer who approves after that isn't charged |
+| Return address | Its origin must be allowed by the operator, as an exact match, so a checkout link can't send buyers to another site |
+| Two checkouts | Different `Idempotency-Key`s on catalog checkouts are two purchases, and a buyer could pay both. That's the merchant's choice |
+
+**One charge at most.** One checkout has one order, and one order has one capture. No code path replaces an order. A capture's request is
+recorded before it's sent, so a crash can't look like "nothing happened", and once it's recorded the checkout never reads as expired.
+A lost answer is `unresolved`, and the next confirm reads the order at PayPal to find out. `captured` needs a completed capture matching the amount,
+currency, seller and reference. A capture that doesn't match stays `unresolved` for review, because money did move.
+
 **Recurring prices need PayPal plans.** A recurring config maps to a configured PayPal plan. Arbitrary recurring
 quote amounts are rejected. Product metadata is traceability, not proof of inventory or fulfillment.
 
@@ -111,7 +126,8 @@ that exposure and define a production policy before any live release.
 
 | Situation | Required behavior |
 |---|---|
-| Success redirect before capture | Show pending; only trusted payment facts authorize benefits |
+| Success redirect before capture | Show confirming, then ask PayPal; only trusted payment facts authorize benefits |
+| Buyer approves and never returns | Reopening the link finishes it. Otherwise nothing is captured until the worker handles the stored event (M06) |
 | Callback + repeated webhook | Separate observation dedupe from unique business-effect identity |
 | PayPal request times out | Inspect the existing operation; don't create a second charge. If unprovable, mark unresolved for review |
 | Target database offline | Source commits its outbox; queue retries and shows sync lag |

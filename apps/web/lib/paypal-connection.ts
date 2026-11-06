@@ -25,14 +25,19 @@ import {
 
 export const secretBinding = (projectId: string, environment: string) => `paypal_connection:${projectId}:${environment}`;
 
-// From config, never the request's Host header: a forged header could send PayPal's events elsewhere.
-function webhookUrl(connectionId: string): string | null {
+// From config, never the request's Host header: a forged header could send PayPal's events, or a buyer, elsewhere.
+export function publicOrigin(): string | null {
   try {
     const url = new URL(process.env.PUBLIC_BASE_URL ?? "");
-    return url.protocol === "https:" ? `${url.origin}/webhooks/paypal/${connectionId}` : null;
+    return url.protocol === "https:" ? url.origin : null;
   } catch {
     return null;
   }
+}
+
+function webhookUrl(connectionId: string): string | null {
+  const origin = publicOrigin();
+  return origin && `${origin}/webhooks/paypal/${connectionId}`;
 }
 
 export function toView(connection: PaypalConnectionRecord): PaypalConnectionView {
@@ -60,7 +65,7 @@ function keepWebhookState(connection: PaypalConnectionRecord) {
   };
 }
 
-async function openStoredSession(connection: PaypalConnectionRecord): Promise<PaypalSession> {
+export async function openStoredSession(connection: PaypalConnectionRecord): Promise<PaypalSession> {
   const secretEncrypted = await getPaypalConnectionSecret(connection.id);
   if (!secretEncrypted) throw new SecretUnreadableError();
   return openSession({

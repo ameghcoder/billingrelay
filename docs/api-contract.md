@@ -34,8 +34,8 @@ The API key determines the project and environment (sandbox/live). The merchant 
 |---|---|
 | `POST /v1/quotes` | Immutable one-time price snapshot: customer, one item, quantity, amount, currency, benefits, expiry. `201` when created, `200` for a retry. See below. |
 | `POST /v1/quotes/:id/check` | `{ externalCustomerId }`. Returns the stored quote if this customer can still use it. `422 quote_customer_mismatch`, `422 quote_expired`, `404` outside this project or environment. Checkout applies the same rule. |
-| `POST /v1/checkouts` | Start checkout from `{ productRef, variantRef? }` or `{ quoteId }`, plus `externalCustomerId` and `returnUrl` (allowlisted). Returns `{ id, checkoutUrl }`. |
-| `GET /v1/checkouts/:id` | Money, fulfillment and sync status kept separate, plus the safe next action. |
+| `POST /v1/checkouts` | Start checkout from a quote or the live catalog. `201` when created, `200` for a retry. See below. |
+| `GET /v1/checkouts/:id` | Money, fulfillment and sync status kept separate, plus the safe next action. Read-only, with no PayPal call. |
 | `GET /v1/customers/:externalCustomerId/billing` | Purchases, subscriptions, access, credit balance, `version`. |
 | `POST /v1/subscriptions/:id/cancel` | Cancel at PayPal; access remains until `paidThrough`. |
 | `POST /v1/credits/consume` | Atomic debit: `{ externalCustomerId, amount, usageId }`. The same `usageId` returns the prior result. |
@@ -80,30 +80,69 @@ variants), `not_quotable` (a subscription), `quantity_too_large`, `amount_too_la
 `catalogVersion` and `variant` are `null` for a merchant-priced quote. `benefits` are per unit. A retry returns the same quote even after
 it expires, marked `expired`; a new price needs a new `Idempotency-Key`.
 
-Checkout status shape:
+A checkout takes one of two forms, and `returnUrl` is required on both:
+
+```jsonc
+// From a quote, which already holds the price. A quote gets one checkout, ever.
+{ "externalCustomerId": "app-user-42", "quoteId": "0193…", "returnUrl": "https://app.example.com/billing/return" }
+
+// Straight from the live catalog, by the same rules as a quote. `quantity` and `metadata` are optional. Sending a price returns 400.
+{ "externalCustomerId": "app-user-42", "productRef": "template", "variantRef": "extended-license", "returnUrl": "https://app.example.com/billing/return" }
+```
+
+Refusals that store nothing: the quote's own `422` codes; `404` for a quote outside this project or environment; `409 quote_used`, with
+`details.checkoutId`; `422 return_url_not_allowed`, unless the origin is under Developers, in Allowed return URLs; `422 paypal_not_connected`;
+`422 public_url_invalid`.
+
+A checkout lasts 1 hour from creation, however close its quote was to expiring. The response to create and read:
 
 ```json
 {
   "id": "0193…",
-  "money": "pending | approved | captured | failed | unresolved | refund_review",
-  "fulfillment": "pending | applied | restricted | failed",
-  "sync": "not_configured | pending | delivered | failed",
-  "nextAction": "redirect | wait | none | contact_support"
+  "externalCustomerId": "app-user-42",
+  "checkoutUrl": "https://billing.example.com/checkout/0193…",
+  "expiresAt": "2026-11-06T10:30:00.000Z",
+  "money": "pending | approved | captured | failed | expired | unresolved | refund_review",
+  "fulfillment": "pending",
+  "sync": "not_configured",
+  "nextAction": "redirect | wait | none | contact_support",
+  "snapshot": {},
+  "paypal": { "orderId": null, "captureId": null }
 }
 ```
+
+| `money` | Meaning | `nextAction` |
+|---|---|---|
+| `pending` | Not approved, as far as we know | `redirect` |
+| `approved` | PayPal says approved, or its capture is pending | `wait` |
+| `captured` | PayPal says completed, and the amount, currency, seller and reference all match | `none` |
+| `failed` | Declined, or the order is gone. No money moved, so a new checkout is fine | `none` |
+| `expired` | Past its hour, with no capture ever sent. Worked out on read, never stored | `none` |
+| `unresolved` | The outcome is unknown, or something didn't match. Don't start another payment | `contact_support` |
+| `refund_review` | Set from M06 on | `contact_support` |
+
+`fulfillment` becomes `pending | applied | restricted | failed` in M06, and `sync` becomes `not_configured | pending | delivered | failed` in M07.
 
 ## Hosted checkout (browser, no credentials)
 
 | Route | Purpose |
 |---|---|
-| `GET /checkout/:id` | Hosted page. Loads the stored snapshot and starts PayPal approval. |
-| `GET /checkout/:id/return` | PayPal return. Shows *pending* until the server confirms capture; never grants benefits itself. |
+| `GET /checkout/:id` | Hosted page: the item and total. Reopening the link confirms any existing order first. Never shows the customer ID, metadata or PayPal IDs. |
+| `GET /checkout/:id/return` | PayPal return. Shows *confirming* until the server has PayPal's answer. Its query string is ignored, and it never grants benefits. |
+| `POST /checkout/:id/pay` | Makes the checkout's one PayPal order, or reuses it, and returns `{ approvalUrl }`. `502` if PayPal refuses and `503` if it can't be reached; both leave it pending. |
+| `POST /checkout/:id/confirm` | Reads the order at PayPal, checks it, captures it and checks the capture. Safe to repeat. `503` when PayPal's answer is unknown. |
+
+Holding the link is the only credential. A GET never changes anything, and anyone can call these two POSTs, because they only ever advance a
+checkout toward what PayPal itself reports.
 
 ## PayPal webhooks
 
 `POST /webhooks/paypal/:connectionId`: verify the signature for that connection's webhook ID,
 store the event in the inbox, then return `200`. No billing logic, AI or destination write happens
 inside this request.
+
+`404` for an unknown connection, `413` over 256 KB, `400 not_verified` for anything PayPal doesn't verify, and `503` when PayPal can't answer,
+so it sends the event again. The same event ID stores one row.
 
 ## Health (public)
 
@@ -128,6 +167,9 @@ used as an environment: `live` returns `422 live_disabled` before any PayPal cal
 | `GET /admin/developers/api-keys` | API keys: name, last 4 characters, status. Never the key or its hash. |
 | `POST /admin/developers/api-keys` | `{ name }`. Returns `201` with the full `key`, the only time it's ever shown. Only its SHA-256 hash and last 4 characters are stored. |
 | `POST /admin/developers/api-keys/:id/revoke` | Stops the key on its next request. Safe to repeat. Quotes it created stay as they are. |
+| `GET /admin/developers/return-origins` | Origins a checkout's `returnUrl` may use. |
+| `POST /admin/developers/return-origins` | `{ origin }`, such as `https://app.example.com`: HTTPS, except `http://localhost`, with no path. Safe to repeat. |
+| `DELETE /admin/developers/return-origins/:id` | New checkouts can't use it. Ones already started keep their return address. Safe to repeat. |
 | `GET /admin/config/drafts` | Saved catalog versions, newest first, with which one is live. |
 | `POST /admin/config/drafts` | `{ baseVersion, config }`, the whole catalog. Saves it as a new version and returns `201 { id, version }`. `400 invalid_config` names each field in `details.fields` and stores nothing. `409 version_conflict` returns `latestVersion` if `baseVersion` is no longer the latest. Doesn't change what's live. |
 | `GET /admin/config/drafts/:id` | One version: its stored config and a JSON Schema for each product's attributes. |

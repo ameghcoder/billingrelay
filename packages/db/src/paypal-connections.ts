@@ -40,6 +40,12 @@ export async function getPaypalConnection(
   return row ?? null;
 }
 
+/** For the webhook route, whose URL names the connection. */
+export async function getPaypalConnectionById(connectionId: string): Promise<PaypalConnectionRecord | null> {
+  const [row] = await getDb().select(safeColumns).from(paypalConnection).where(eq(paypalConnection.id, connectionId));
+  return row ?? null;
+}
+
 export async function getPaypalConnectionSecret(connectionId: string): Promise<string | null> {
   const [row] = await getDb()
     .select({ secretEncrypted: paypalConnection.secretEncrypted })

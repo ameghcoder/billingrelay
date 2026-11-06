@@ -6,6 +6,7 @@
   "exports": {
     "./api-keys": "./src/api-keys.ts",
     "./catalog": "./src/catalog.ts",
+    "./checkouts": "./src/checkouts.ts",
     "./idempotency": "./src/idempotency.ts",
     "./paypal-connection": "./src/paypal-connection.ts",
     "./quotes": "./src/quotes.ts",

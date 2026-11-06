@@ -1,8 +1,8 @@
 import { hashApiKey } from "@billingrelay/core/secrets";
 import { findActiveApiKey, type ActiveApiKey } from "@billingrelay/db";
-import { apiError } from "./api-response";
+import { apiError, readBodyUpTo } from "./api-response";
 
-const MAX_BODY_CHARACTERS = 64 * 1024;
+const MAX_BODY_BYTES = 64 * 1024;
 
 const readBearerToken = (request: Request) => /^Bearer (\S+)$/i.exec(request.headers.get("authorization") ?? "")?.[1];
 
@@ -29,9 +29,8 @@ export const bodyTooLarge = () => apiError(413, "request_too_large", "The reques
 
 /** Unparseable JSON comes back as null, for the schema to refuse. `null` as the result means the body was too large. */
 export async function readJsonBody(request: Request): Promise<{ body: unknown } | null> {
-  if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_CHARACTERS) return null;
-  const text = await request.text();
-  if (text.length > MAX_BODY_CHARACTERS) return null;
+  const text = await readBodyUpTo(request, MAX_BODY_BYTES);
+  if (text === null) return null;
   try {
     return { body: JSON.parse(text) };
   } catch {

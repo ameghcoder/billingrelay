@@ -10,6 +10,17 @@ export {
   type CatalogVersionWithConfig,
   type SaveCatalogResult,
 } from "./catalog";
+export {
+  createCheckout,
+  findCheckout,
+  findCheckoutByKey,
+  findCheckoutIdByQuote,
+  getCheckout,
+  markCaptureRequested,
+  recordCheckoutMoney,
+  saveCheckoutOrder,
+  type CheckoutRecord,
+} from "./checkouts";
 export { closePools, requireEnv } from "./client";
 export {
   createApiKey,
@@ -19,7 +30,9 @@ export {
   type ActiveApiKey,
   type ApiKeyRecord,
 } from "./api-keys";
+export { storePaypalEvent } from "./paypal-events";
 export { createQuote, findQuoteByKey, getQuote, type QuoteRecord } from "./quotes";
+export { addReturnOrigin, isReturnOriginAllowed, listReturnOrigins, removeReturnOrigin, type ReturnOriginRecord } from "./return-origins";
 export type { ProjectScope } from "./schema";
 export {
   getWorkerStatus,
@@ -33,6 +46,7 @@ export {
 export {
   getDefaultProjectId,
   getPaypalConnection,
+  getPaypalConnectionById,
   getPaypalConnectionSecret,
   savePaypalCredentials,
   updatePaypalConnectionStatus,

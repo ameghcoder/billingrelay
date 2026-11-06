@@ -1,4 +1,5 @@
 import type { CatalogConfig } from "@billingrelay/core/catalog";
+import type { MoneyReason, StoredMoneyStatus } from "@billingrelay/core/checkouts";
 import type { QuoteSnapshot } from "@billingrelay/core/quotes";
 import { sql } from "drizzle-orm";
 import { boolean, check, integer, json, jsonb, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
@@ -203,6 +204,88 @@ export const quote = pgTable(
     unique("quote_project_environment_key_unique").on(table.projectId, table.environment, table.idempotencyKey),
     check("quote_environment_check", sql`${table.environment} IN ('sandbox', 'live')`),
   ],
+);
+
+// Where a checkout may send the buyer afterwards. An exact origin, so a lookalike host doesn't match.
+export const returnOrigin = pgTable(
+  "return_origin",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id),
+    environment: text("environment").$type<"sandbox" | "live">().notNull(),
+    origin: text("origin").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+  },
+  (table) => [
+    unique("return_origin_project_environment_origin_unique").on(table.projectId, table.environment, table.origin),
+    check("return_origin_environment_check", sql`${table.environment} IN ('sandbox', 'live')`),
+  ],
+);
+
+export const checkout = pgTable(
+  "checkout",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id),
+    environment: text("environment").$type<"sandbox" | "live">().notNull(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customer.id),
+    apiKeyId: uuid("api_key_id")
+      .notNull()
+      .references(() => apiKey.id),
+    // One quote gets one checkout, ever. Empty for a checkout straight from the catalog.
+    quoteId: uuid("quote_id").references(() => quote.id),
+    idempotencyKey: text("idempotency_key").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    returnUrl: text("return_url").notNull(),
+    // json, not jsonb: keeps the exact document. Never updated.
+    snapshot: json("snapshot").$type<QuoteSnapshot>().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    moneyStatus: text("money_status").$type<StoredMoneyStatus>().notNull().default("pending"),
+    moneyReason: text("money_reason").$type<MoneyReason>(),
+    // Written before calling PayPal, so a crash can't look like "nothing happened".
+    captureRequestedAt: timestamp("capture_requested_at", { withTimezone: true }),
+    paypalOrderId: text("paypal_order_id"),
+    paypalSellerId: text("paypal_seller_id"),
+    paypalCaptureId: text("paypal_capture_id"),
+    // What PayPal reported, kept apart from the snapshot so a mismatch can be reviewed.
+    capturedAmount: integer("captured_amount"),
+    capturedCurrency: text("captured_currency"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("checkout_project_environment_key_unique").on(table.projectId, table.environment, table.idempotencyKey),
+    unique("checkout_quote_unique").on(table.quoteId),
+    unique("checkout_paypal_order_unique").on(table.paypalOrderId),
+    unique("checkout_paypal_capture_unique").on(table.paypalCaptureId),
+    check("checkout_environment_check", sql`${table.environment} IN ('sandbox', 'live')`),
+    check("checkout_money_status_check", sql`${table.moneyStatus} IN ('pending', 'approved', 'captured', 'failed', 'unresolved', 'refund_review')`),
+  ],
+);
+
+// Verified PayPal events, stored before they're acknowledged. Holds PayPal's raw body, which names the buyer.
+export const paypalEvent = pgTable(
+  "paypal_event",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    connectionId: uuid("connection_id")
+      .notNull()
+      .references(() => paypalConnection.id),
+    eventId: text("event_id").notNull(),
+    eventType: text("event_type").notNull(),
+    payload: json("payload").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("paypal_event_connection_event_unique").on(table.connectionId, table.eventId)],
 );
 
 export type ProjectScope = { projectId: string; environment: "sandbox" | "live" };

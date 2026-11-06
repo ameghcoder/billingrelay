@@ -46,6 +46,15 @@ The operator enters a sandbox client ID and secret at `/admin/paypal`. Nothing i
 - **Live is disabled.** The API refuses `live` before any call, and `withSandbox` in `apps/web/lib/paypal-routes.ts` is that gate. Enabling live
   also means removing the `"sandbox"` values in `saveConnection` and `getSandboxConnection`, and it needs its own review and check.
 
+## Checkout
+
+- **Create:** `custom_id` is the checkout ID, and `PayPal-Request-Id` is `order-<checkout ID>`. `Prefer: return=representation` makes the answer include
+  `payee.merchant_id` and `custom_id`. The status is `PAYER_ACTION_REQUIRED` and the approval link's `rel` is `payer-action`.
+- **Capture:** `PayPal-Request-Id` is `capture-<order ID>`. Order and capture are both checked against the stored snapshot before anything counts as paid.
+- **Seller check:** PayPal gives no other way to read our seller ID here (`userinfo` has no `payer_id`), so the check compares with the `merchant_id` PayPal named when
+  the order was created. It catches a change between order and capture, not a wrong first answer. We never set the seller ourselves.
+- **Declines:** only a known list of capture refusals, such as `INSTRUMENT_DECLINED`, counts as `failed`. Any other refusal stays `unresolved`, because it doesn't prove no money moved.
+
 ## Observed in sandbox
 
 1. **Correlation.** Without `custom_id`, events link only by PayPal IDs. Set `purchase_units[].custom_id` on orders and
@@ -66,6 +75,8 @@ The operator enters a sandbox client ID and secret at `/admin/paypal`. Nothing i
    monthly plan and a captured renewal webhook are still unverified.
 8. **Renewals post after the scheduled time.** With `next_billing_time` at 10:00 UTC on 4 Nov, no payment had posted by 11:41 UTC.
    The previous payment posted at 11:32 UTC on 3 Nov. See the grace-period decision in `billing-rules.md`.
+9. **Concurrent captures with one request ID are safe.** 20 at once on an approved order all succeeded with one capture, in two runs. No `409` for a request in flight appeared.
+10. **Capture events carry the link.** A real `PAYMENT.CAPTURE.COMPLETED` has `resource.custom_id` (our checkout ID) as well as the order ID in `related_ids`.
 
 ## Sandbox setup
 

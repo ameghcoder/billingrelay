@@ -13,6 +13,7 @@
     "db:generate": "pnpm --filter @billingrelay/db generate",
     "db:migrate": "pnpm --filter @billingrelay/db migrate",
     "db:seed": "pnpm --filter @billingrelay/db seed",
+    "test:invariants": "vitest run --dir tests/invariants --no-file-parallelism",
     "test:e2e": "vitest run --dir tests/e2e --no-file-parallelism",
     "test": "vitest run --dir packages"
   },

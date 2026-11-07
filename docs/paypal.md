@@ -77,6 +77,10 @@ The operator enters a sandbox client ID and secret at `/admin/paypal`. Nothing i
    The previous payment posted at 11:32 UTC on 3 Nov. See the grace-period decision in `billing-rules.md`.
 9. **Concurrent captures with one request ID are safe.** 20 at once on an approved order all succeeded with one capture, in two runs. No `409` for a request in flight appeared.
 10. **Capture events carry the link.** A real `PAYMENT.CAPTURE.COMPLETED` has `resource.custom_id` (our checkout ID) as well as the order ID in `related_ids`.
+11. **A refund event names its capture only through a link.** A real `PAYMENT.CAPTURE.REFUNDED` is a `refund` resource: `resource.id` is the refund, `custom_id` is our checkout ID, and
+    the capture is in the `up` link, `/v2/payments/captures/<id>`. It has no order ID. Each partial refund sends its own event.
+12. **A refunded capture keeps its amount and changes its status.** After a full refund the order is still `COMPLETED`, and its capture's status is `REFUNDED` with the original amount.
+13. **Events can take over a minute.** Two refund events took about 80 seconds to appear in PayPal's own event list.
 
 ## Sandbox setup
 

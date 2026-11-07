@@ -1,3 +1,4 @@
+import { openStoredSession, secretBinding } from "@billingrelay/billing";
 import {
   paypalConnectionViewSchema,
   type PaypalCheckResult,
@@ -5,10 +6,9 @@ import {
   type PaypalWebhookError,
   type SavePaypalConnection,
 } from "@billingrelay/core/paypal-connection";
-import { decryptSecret, encryptSecret, SecretUnreadableError } from "@billingrelay/core/secrets";
+import { encryptSecret, SecretUnreadableError } from "@billingrelay/core/secrets";
 import {
   getPaypalConnection,
-  getPaypalConnectionSecret,
   savePaypalCredentials,
   updatePaypalConnectionStatus,
   type PaypalConnectionRecord,
@@ -22,8 +22,6 @@ import {
   readCapabilities,
   type PaypalSession,
 } from "@billingrelay/provider-paypal";
-
-export const secretBinding = (projectId: string, environment: string) => `paypal_connection:${projectId}:${environment}`;
 
 // From config, never the request's Host header: a forged header could send PayPal's events, or a buyer, elsewhere.
 export function publicOrigin(): string | null {
@@ -63,16 +61,6 @@ function keepWebhookState(connection: PaypalConnectionRecord) {
     webhookError: connection.webhookError,
     capabilities: connection.capabilities,
   };
-}
-
-export async function openStoredSession(connection: PaypalConnectionRecord): Promise<PaypalSession> {
-  const secretEncrypted = await getPaypalConnectionSecret(connection.id);
-  if (!secretEncrypted) throw new SecretUnreadableError();
-  return openSession({
-    environment: connection.environment,
-    clientId: connection.clientId,
-    clientSecret: decryptSecret(secretEncrypted, secretBinding(connection.projectId, connection.environment)),
-  });
 }
 
 function sessionFailure(error: unknown): PaypalCheckResult {

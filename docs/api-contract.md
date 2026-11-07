@@ -103,7 +103,7 @@ A checkout lasts 1 hour from creation, however close its quote was to expiring. 
   "checkoutUrl": "https://billing.example.com/checkout/0193…",
   "expiresAt": "2026-11-06T10:30:00.000Z",
   "money": "pending | approved | captured | failed | expired | unresolved | refund_review",
-  "fulfillment": "pending",
+  "fulfillment": "pending | applied | restricted | failed",
   "sync": "not_configured",
   "nextAction": "redirect | wait | none | contact_support",
   "snapshot": {},
@@ -119,9 +119,17 @@ A checkout lasts 1 hour from creation, however close its quote was to expiring. 
 | `failed` | Declined, or the order is gone. No money moved, so a new checkout is fine | `none` |
 | `expired` | Past its hour, with no capture ever sent. Worked out on read, never stored | `none` |
 | `unresolved` | The outcome is unknown, or something didn't match. Don't start another payment | `contact_support` |
-| `refund_review` | Set from M06 on | `contact_support` |
+| `refund_review` | PayPal reported a refund of this capture, full or partial. Access is restricted until a person decides | `contact_support` |
 
-`fulfillment` becomes `pending | applied | restricted | failed` in M06, and `sync` becomes `not_configured | pending | delivered | failed` in M07.
+| `fulfillment` | Meaning |
+|---|---|
+| `pending` | Benefits aren't applied yet. Normal for a few seconds after `captured`, and for a credit pack until the ledger exists (M11) |
+| `applied` | Everything the snapshot promised is applied, including a purchase with nothing to apply |
+| `restricted` | A refund stopped them. Any grant from this payment is restricted |
+| `failed` | Reserved. Nothing sets it yet: a failure to apply is retried and stays `pending` |
+
+Money and fulfillment are separate on purpose: `captured` with `pending` means the money arrived and the benefits are still on their way.
+`sync` becomes `not_configured | pending | delivered | failed` in M07.
 
 ## Hosted checkout (browser, no credentials)
 
@@ -143,6 +151,9 @@ inside this request.
 
 `404` for an unknown connection, `413` over 256 KB, `400 not_verified` for anything PayPal doesn't verify, and `503` when PayPal can't answer,
 so it sends the event again. The same event ID stores one row.
+
+The worker reads stored events afterwards. An event only says which checkout to look at: the worker asks PayPal for the facts, using the same
+code as `/confirm`. Stored events end as `processed`, `ignored` (nothing of ours, or a type with no handler yet) or `failed` after 8 attempts.
 
 ## Health (public)
 

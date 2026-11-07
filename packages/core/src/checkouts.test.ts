@@ -114,6 +114,19 @@ const state = (moneyStatus: StoredMoneyStatus, overrides: object = {}) => ({
   ...overrides,
 });
 
+describe("judgeCaptures on a refunded capture", () => {
+  const expected = { checkoutId: "c1", amount: 100, currency: "USD", sellerId: "S1" };
+  const refunded = { id: "CAP", state: "refunded" as const, amount: 100, currency: "USD", customId: "c1", sellerId: "S1" };
+
+  it("counts as captured, so the refund's own event can move it to review", () => {
+    expect(judgeCaptures(expected, [refunded])).toMatchObject({ moneyStatus: "captured", moneyReason: null });
+  });
+
+  it("still has to match", () => {
+    expect(judgeCaptures(expected, [{ ...refunded, amount: 1 }])).toMatchObject({ moneyStatus: "unresolved", moneyReason: "amount_mismatch" });
+  });
+});
+
 describe("expiry", () => {
   it.each<StoredMoneyStatus>(["pending", "approved"])("%s past its time, with no capture sent, reads as expired", (status) => {
     const past = state(status, { isExpired: true });

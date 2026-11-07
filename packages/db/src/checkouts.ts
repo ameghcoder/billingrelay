@@ -1,9 +1,15 @@
-import type { MoneyReason, StoredMoneyStatus } from "@billingrelay/core/checkouts";
+import type { FulfillmentReason, FulfillmentStatus, MoneyReason, StoredMoneyStatus } from "@billingrelay/core/checkouts";
 import type { QuoteSnapshot } from "@billingrelay/core/quotes";
-import { and, eq, sql, TransactionRollbackError } from "drizzle-orm";
+import { and, eq, sql, TransactionRollbackError, type SQL } from "drizzle-orm";
+import { v7 as uuidv7 } from "uuid";
 import { getDb } from "./client";
 import { ensureCustomer } from "./customers";
+import { retryDelay } from "./retry-delay";
 import { checkout, customer, type ProjectScope } from "./schema";
+
+const FIRST_CHECK_AFTER_CAPTURE_SECONDS = 30;
+// 5s, 30s, 2m, 10m, then hourly: about 24 hours.
+const MAX_UNCLEAR_CHECKS = 28;
 
 export type CheckoutRecord = {
   id: string;
@@ -21,6 +27,8 @@ export type CheckoutRecord = {
   paypalOrderId: string | null;
   paypalSellerId: string | null;
   paypalCaptureId: string | null;
+  fulfillmentStatus: FulfillmentStatus;
+  fulfillmentReason: FulfillmentReason | null;
 };
 
 const checkoutColumns = {
@@ -40,6 +48,8 @@ const checkoutColumns = {
   paypalOrderId: checkout.paypalOrderId,
   paypalSellerId: checkout.paypalSellerId,
   paypalCaptureId: checkout.paypalCaptureId,
+  fulfillmentStatus: checkout.fulfillmentStatus,
+  fulfillmentReason: checkout.fulfillmentReason,
 };
 
 const selectCheckouts = <Columns extends typeof checkoutColumns>(columns: Columns) =>
@@ -50,6 +60,14 @@ const inScope = ({ projectId, environment }: ProjectScope) => and(eq(checkout.pr
 /** For the hosted page, whose only credential is holding the link. */
 export async function findCheckout(id: string): Promise<CheckoutRecord | null> {
   const [row] = await selectCheckouts(checkoutColumns).where(eq(checkout.id, id));
+  return row ?? null;
+}
+
+/** A verified event's checkout, only inside the project whose webhook received it. */
+export async function findCheckoutForEvent(scope: ProjectScope, reference: { checkoutId: string | null; orderId: string | null }): Promise<CheckoutRecord | null> {
+  const match = reference.checkoutId ? eq(checkout.id, reference.checkoutId) : reference.orderId ? eq(checkout.paypalOrderId, reference.orderId) : null;
+  if (!match) return null;
+  const [row] = await selectCheckouts(checkoutColumns).where(and(inScope(scope), match));
   return row ?? null;
 }
 
@@ -116,11 +134,15 @@ export async function saveCheckoutOrder(id: string, orderId: string, sellerId: s
   return (await findCheckout(id))!;
 }
 
-/** Called before PayPal is asked to capture. The first time stays, so a retry can't move it. */
+/**
+ * Called before PayPal is asked to capture. The first time stays, so a retry can't move it.
+ * The worker's first look waits a moment, so it doesn't repeat a capture that's still on its way.
+ */
 export async function markCaptureRequested(id: string): Promise<void> {
   await getDb().execute(sql`
     UPDATE checkout
     SET capture_requested_at = COALESCE(capture_requested_at, now()),
+        next_check_at = COALESCE(next_check_at, now() + make_interval(secs => ${FIRST_CHECK_AFTER_CAPTURE_SECONDS})),
         updated_at = now()
     WHERE id = ${id}`);
 }
@@ -134,17 +156,66 @@ export async function recordCheckoutMoney(
   },
 ): Promise<CheckoutRecord> {
   const { moneyStatus, moneyReason, capture } = outcome;
-  // The WHERE lists the only states that may still change, so a slow request can't overwrite captured, failed or a mismatch.
+  const captureId = capture?.id ?? null;
+  const amount = capture?.amount ?? null;
+  const currency = capture?.currency ?? null;
+  // One statement, so the change and its outbox row commit together. The first half of the WHERE lists the only
+  // states that may still change, so a slow request can't overwrite captured, failed or a mismatch. The second
+  // half skips a repeat of what's already stored, so 20 confirms make one outbox row, not 20.
   await getDb().execute(sql`
-    UPDATE checkout
-    SET money_status = ${moneyStatus},
-        money_reason = ${moneyReason},
-        paypal_capture_id = COALESCE(${capture?.id ?? null}, paypal_capture_id),
-        captured_amount = COALESCE(${capture?.amount ?? null}, captured_amount),
-        captured_currency = COALESCE(${capture?.currency ?? null}, captured_currency),
-        updated_at = now()
-    WHERE id = ${id}
-      AND (money_status IN ('pending', 'approved')
-           OR (money_status = 'unresolved' AND money_reason = 'capture_outcome_unknown'))`);
+    WITH changed AS (
+      UPDATE checkout
+      SET money_status = ${moneyStatus},
+          money_reason = ${moneyReason},
+          paypal_capture_id = COALESCE(${captureId}, paypal_capture_id),
+          captured_amount = COALESCE(${amount}, captured_amount),
+          captured_currency = COALESCE(${currency}, captured_currency),
+          source_version = source_version + 1,
+          next_check_at = NULL,
+          check_attempts = 0,
+          updated_at = now()
+      WHERE id = ${id}
+        AND (money_status IN ('pending', 'approved')
+             OR (money_status = 'unresolved' AND money_reason = 'capture_outcome_unknown'))
+        AND (money_status IS DISTINCT FROM ${moneyStatus}
+             OR money_reason IS DISTINCT FROM ${moneyReason}
+             OR paypal_capture_id IS DISTINCT FROM COALESCE(${captureId}, paypal_capture_id)
+             OR captured_amount IS DISTINCT FROM COALESCE(${amount}, captured_amount)
+             OR captured_currency IS DISTINCT FROM COALESCE(${currency}, captured_currency))
+      RETURNING id, project_id, source_version
+    )
+    INSERT INTO outbox (id, project_id, entity_type, entity_id, source_version)
+    SELECT ${uuidv7()}, project_id, 'checkout', id, source_version FROM changed`);
   return (await findCheckout(id))!;
 }
+
+/** Claiming pushes the next look back first, so a crash mid-way just means trying again later. Sandbox only. */
+const claimCheckout = async (needsWork: SQL): Promise<string | null> => {
+  const { rows } = await getDb().execute<{ id: string }>(sql`
+    UPDATE checkout
+    SET check_attempts = check_attempts + 1,
+        next_check_at = now() + ${retryDelay(sql`check_attempts + 1`)}
+    WHERE id = (
+      SELECT id FROM checkout
+      WHERE environment = 'sandbox'
+        AND fulfillment_status = 'pending'
+        AND (next_check_at IS NULL OR next_check_at <= now())
+        AND ${needsWork}
+      ORDER BY next_check_at NULLS FIRST, id
+      FOR UPDATE SKIP LOCKED
+      LIMIT 1
+    )
+    RETURNING id`);
+  return rows[0]?.id ?? null;
+};
+
+/** Money arrived and its benefits haven't been applied: the buyer's own confirm, or a crash between the two steps. */
+export const claimCheckoutForBenefits = () => claimCheckout(sql`money_status = 'captured' AND fulfillment_reason IS NULL`);
+
+/** A capture was sent and its outcome isn't known. Gives up after about a day, and stays visible for a person. */
+export const claimUnclearCheckout = () =>
+  claimCheckout(sql`
+    check_attempts < ${MAX_UNCLEAR_CHECKS}
+    AND paypal_order_id IS NOT NULL
+    AND ((money_status = 'unresolved' AND money_reason = 'capture_outcome_unknown')
+         OR (money_status = 'approved' AND capture_requested_at IS NOT NULL))`);

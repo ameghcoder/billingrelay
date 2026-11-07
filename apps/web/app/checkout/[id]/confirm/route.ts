@@ -1,5 +1,6 @@
+import { confirmPayment } from "@billingrelay/billing";
 import { jsonResponse } from "@/lib/api-response";
-import { confirmPayment, toPublicCheckout } from "@/lib/checkout";
+import { toPublicCheckout } from "@/lib/checkout";
 import { withCheckout } from "@/lib/checkout-routes";
 
 export const POST = withCheckout(async (checkout) => {

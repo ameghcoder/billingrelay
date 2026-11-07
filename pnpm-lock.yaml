@@ -20,6 +20,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@billingrelay/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
       '@billingrelay/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -96,9 +99,15 @@ importers:
 
   apps/worker:
     dependencies:
+      '@billingrelay/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
       '@billingrelay/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@billingrelay/provider-paypal':
+        specifier: workspace:*
+        version: link:../../packages/providers/paypal
       pg-boss:
         specifier: 12.38.0
         version: 12.38.0(@opentelemetry/api@1.10.0)
@@ -112,6 +121,28 @@ importers:
       tsx:
         specifier: 4.23.15
         version: 4.23.15
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
+  packages/billing:
+    dependencies:
+      '@billingrelay/core':
+        specifier: workspace:*
+        version: link:../core
+      '@billingrelay/db':
+        specifier: workspace:*
+        version: link:../db
+      '@billingrelay/provider-paypal':
+        specifier: workspace:*
+        version: link:../providers/paypal
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: 22.20.5
+        version: 22.20.5
       typescript:
         specifier: 5.9.3
         version: 5.9.3

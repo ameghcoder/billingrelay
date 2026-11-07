@@ -30,3 +30,8 @@ Status: accepted, 2026-10-28 to 2026-11-05.
 19. **One quote gets one checkout, ever.** It's simple and impossible to pay twice, at the cost of one extra call when a checkout fails or expires.
 20. **The webhook route only verifies and stores.** A buyer who approves and never returns isn't captured until the worker handles the stored event, or they reopen the
     link. Capturing inside the request would put billing logic before the acknowledgement.
+21. **The stored row is the job, and pg-boss only wakes the worker.** A lost or repeated job can't lose or repeat work, and "stored but never queued" can't happen. The cost is a few seconds' delay.
+22. **A webhook is a nudge.** The worker re-reads the order from PayPal instead of acting on the event. It costs a call per event, and keeps one path that can say `captured`.
+23. **Money and benefits commit separately.** A merchant polling may see `captured` with `fulfillment: pending` for a few seconds, but a failure applying benefits can't hide that money arrived.
+24. **`next_attempt_at` is both the retry time and the lease.** Claiming pushes it forward, so a killed worker's event comes back by itself, with no second column to keep in step.
+25. **A refund goes to review whatever its size.** Partial refunds need a policy nobody has decided, and restricting access is the safe direction.

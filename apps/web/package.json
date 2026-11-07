@@ -10,6 +10,7 @@
     "typecheck": "tsc"
   },
   "dependencies": {
+    "@billingrelay/billing": "workspace:*",
     "@billingrelay/core": "workspace:*",
     "@billingrelay/db": "workspace:*",
     "@billingrelay/provider-paypal": "workspace:*",

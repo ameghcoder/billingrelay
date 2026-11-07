@@ -115,7 +115,28 @@ subscription ends. Monthly credits are spent first. Expiry is a new ledger entry
 the end date itself so a delayed job can't allow expired credits to be used. The M09 grace period applies to credits as
 well as access.
 
+## Processing
+
+Once PayPal has told us something, the worker finishes the job, whether or not the buyer comes back.
+
+| Area | Rule |
+|---|---|
+| An event | Only says which checkout to look at. The worker asks PayPal for the facts, through the same code as `/confirm`, so repeats and events out of order can't matter |
+| The job | The stored row. pg-boss only wakes the worker, so a lost job loses nothing |
+| Order of work | Money first, then benefits, in separate transactions, so a failure applying benefits can't hide that the money arrived |
+| One effect | Unique on the PayPal payment ID and benefit kind. Only a newly inserted row changes anything |
+| Retries | 5s, 30s, 2m, 10m, then hourly. An event stops after 8 attempts and shows `failed`. A payment with an unknown outcome is asked about for about 24 hours, then stays `unresolved` for a person |
+| A killed worker | Its event's 2-minute lease runs out and another attempt takes it |
+| Expiry | An approved order the worker hears about after the checkout's hour isn't captured |
+| Not covered | An approved order whose event never arrived. Finding those is reconciliation (M14) |
+
+Every billing change writes an outbox row in the same transaction, and the row only points at the record. Prices and benefits come only from the
+snapshot, never from an event.
+
 ## Refund boundary
+
+A verified refund event for the capture on record moves money from `captured` to `refund_review`, sets fulfillment to `restricted` and restricts the grant
+from that payment, in one transaction. Full and partial refunds do the same, and a second refund changes nothing. A customer's grants from other purchases stay active.
 
 Refund or reversal evidence restricts affected access or spending pending review, and is surfaced explicitly.
 Partial refunds, consumed-credit debt and automated refund execution need a later policy. Application credits aren't
@@ -127,7 +148,7 @@ that exposure and define a production policy before any live release.
 | Situation | Required behavior |
 |---|---|
 | Success redirect before capture | Show confirming, then ask PayPal; only trusted payment facts authorize benefits |
-| Buyer approves and never returns | Reopening the link finishes it. Otherwise nothing is captured until the worker handles the stored event (M06) |
+| Buyer approves and never returns | The worker captures it from the stored event, or reopening the link does. Nothing is captured after the checkout's hour |
 | Callback + repeated webhook | Separate observation dedupe from unique business-effect identity |
 | PayPal request times out | Inspect the existing operation; don't create a second charge. If unprovable, mark unresolved for review |
 | Target database offline | Source commits its outbox; queue retries and shows sync lag |
@@ -138,6 +159,7 @@ that exposure and define a production policy before any live release.
 | Subscription cancelled / payment failed | Separate PayPal lifecycle from existing paid-through access |
 | Two subscription checkout attempts | Guard the intended active subscription; surface pending/active state |
 | Catalog edits during checkout | Honor the immutable snapshot. A quote for a changed or removed product keeps its price and runs out within 60 minutes |
+| Refund before we recorded the capture | The refund's event confirms the payment first, then moves it to review. No benefits are applied |
 | Refund after usage | Restrict and surface for review; don't invent a clawback policy |
 | Currencies | Separate configured prices and totals; no implicit FX |
 | Manual target edits | Billing tables are managed projections; reconcile or flag divergence |

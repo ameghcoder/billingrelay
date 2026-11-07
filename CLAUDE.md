@@ -16,7 +16,8 @@ Better Auth, Postgres (source + a separate destination; Supabase supported), Dri
 persistent Node worker, AI SDK, Vitest + Playwright, pnpm workspace, Docker Compose, Render.
 
 Layout: `apps/web` (dashboard, API routes, checkout, auth), `apps/worker` (processing, sync,
-reconciliation), `packages/core` (billing/access/ledger invariants), `packages/providers/paypal`,
+reconciliation), `packages/core` (billing/access/ledger invariants), `packages/billing` (payment and event handling
+shared by web and worker), `packages/providers/paypal`,
 `packages/db` (schema, migrations, transactions), `packages/sync-postgres` (destination migration
 and delivery), `packages/sdk` (thin server SDK), `examples/merchant-app`.
 

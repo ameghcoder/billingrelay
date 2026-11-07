@@ -32,7 +32,8 @@ with no second payment or duplicate row, and old versions can't overwrite new on
 **M09 PayPal recurring plan.** One monthly plan, paid access, renewal evidence, cancellation, paid-through policy. Includes the monthly plan and cancellation checks left over from
 M00, and capturing a real renewal webhook. *Pass:* a real sandbox subscription works; repeated observations don't duplicate paid benefits; renewal testing is documented.
 
-**M11 Credit packs and usage.** Purchase grants, atomic debit, stable usage identity, compensation, balance projection. *Pass:* no duplicate grant or debit, no overspend; one failed
+**M11 Credit packs and usage.** Purchase grants, atomic debit, stable usage identity, compensation, balance projection, and `GET /v1/customers/:externalCustomerId/billing`
+for access and balance. *Pass:* no duplicate grant or debit, no overspend; one failed
 usage gets one compensation.
 
 **M12 Reviewed AI configuration.** Plain-language input, small tools, validated draft, capability checks, missing-decision prompts, approval. *Pass:* membership, pack and variant

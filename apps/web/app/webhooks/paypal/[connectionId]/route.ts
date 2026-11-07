@@ -1,9 +1,9 @@
+import { openStoredSession } from "@billingrelay/billing";
 import { SecretUnreadableError } from "@billingrelay/core/secrets";
 import { getPaypalConnectionById, storePaypalEvent } from "@billingrelay/db";
 import { hasSignatureHeaders, PaypalError, verifyEvent } from "@billingrelay/provider-paypal";
 import { z } from "zod";
 import { apiError, isUuid, jsonResponse, readBodyUpTo } from "@/lib/api-response";
-import { openStoredSession } from "@/lib/paypal-connection";
 
 const MAX_BODY_BYTES = 256 * 1024;
 

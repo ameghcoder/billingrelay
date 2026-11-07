@@ -1,8 +1,8 @@
 import type { CatalogConfig } from "@billingrelay/core/catalog";
-import type { MoneyReason, StoredMoneyStatus } from "@billingrelay/core/checkouts";
+import type { FulfillmentReason, FulfillmentStatus, MoneyReason, StoredMoneyStatus } from "@billingrelay/core/checkouts";
 import type { QuoteSnapshot } from "@billingrelay/core/quotes";
 import { sql } from "drizzle-orm";
-import { boolean, check, integer, json, jsonb, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, json, jsonb, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 
 // Better Auth expects these four tables and column names.
@@ -259,6 +259,13 @@ export const checkout = pgTable(
     // What PayPal reported, kept apart from the snapshot so a mismatch can be reviewed.
     capturedAmount: integer("captured_amount"),
     capturedCurrency: text("captured_currency"),
+    fulfillmentStatus: text("fulfillment_status").$type<FulfillmentStatus>().notNull().default("pending"),
+    fulfillmentReason: text("fulfillment_reason").$type<FulfillmentReason>(),
+    // Goes up by one with each billing change, in the same transaction. The destination only accepts a newer one.
+    sourceVersion: integer("source_version").notNull().default(0),
+    // When the worker may look at this checkout again without any event telling it to.
+    nextCheckAt: timestamp("next_check_at", { withTimezone: true }),
+    checkAttempts: integer("check_attempts").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -269,10 +276,15 @@ export const checkout = pgTable(
     unique("checkout_paypal_capture_unique").on(table.paypalCaptureId),
     check("checkout_environment_check", sql`${table.environment} IN ('sandbox', 'live')`),
     check("checkout_money_status_check", sql`${table.moneyStatus} IN ('pending', 'approved', 'captured', 'failed', 'unresolved', 'refund_review')`),
+    check("checkout_fulfillment_status_check", sql`${table.fulfillmentStatus} IN ('pending', 'applied', 'restricted', 'failed')`),
+    index("checkout_needs_work_idx")
+      .on(table.nextCheckAt)
+      .where(sql`${table.fulfillmentStatus} = 'pending' AND ${table.moneyStatus} IN ('approved', 'captured', 'unresolved')`),
   ],
 );
 
 // Verified PayPal events, stored before they're acknowledged. Holds PayPal's raw body, which names the buyer.
+// The row is the job: `next_attempt_at` is both the retry time and the lease, so a killed worker's event comes back by itself.
 export const paypalEvent = pgTable(
   "paypal_event",
   {
@@ -284,8 +296,86 @@ export const paypalEvent = pgTable(
     eventType: text("event_type").notNull(),
     payload: json("payload").notNull(),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+    status: text("status").$type<PaypalEventStatus>().notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+    failureCode: text("failure_code"),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
   },
-  (table) => [unique("paypal_event_connection_event_unique").on(table.connectionId, table.eventId)],
+  (table) => [
+    unique("paypal_event_connection_event_unique").on(table.connectionId, table.eventId),
+    check("paypal_event_status_check", sql`${table.status} IN ('pending', 'processed', 'ignored', 'failed')`),
+    index("paypal_event_due_idx").on(table.nextAttemptAt).where(sql`${table.status} = 'pending'`),
+  ],
 );
 
+// One row per effect of one payment. Only a newly inserted row changes anything, however many signals arrive.
+export const billingEffect = pgTable(
+  "billing_effect",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id),
+    checkoutId: uuid("checkout_id")
+      .notNull()
+      .references(() => checkout.id),
+    // A capture ID now, and a sale ID for subscriptions from M09.
+    paypalPaymentId: text("paypal_payment_id").notNull(),
+    kind: text("kind").$type<"access">().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("billing_effect_payment_kind_unique").on(table.paypalPaymentId, table.kind)],
+);
+
+// One row per paid purchase, so refunding one restricts only that one. A customer has access while any of their grants is active.
+export const accessGrant = pgTable(
+  "access_grant",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id),
+    environment: text("environment").$type<"sandbox" | "live">().notNull(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customer.id),
+    accessKey: text("access_key").notNull(),
+    checkoutId: uuid("checkout_id")
+      .notNull()
+      .references(() => checkout.id),
+    paypalPaymentId: text("paypal_payment_id").notNull(),
+    status: text("status").$type<"active" | "restricted">().notNull().default("active"),
+    sourceVersion: integer("source_version").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("access_grant_environment_check", sql`${table.environment} IN ('sandbox', 'live')`),
+    check("access_grant_status_check", sql`${table.status} IN ('active', 'restricted')`),
+    index("access_grant_customer_idx").on(table.projectId, table.environment, table.customerId),
+    index("access_grant_checkout_idx").on(table.checkoutId),
+  ],
+);
+
+// Only points at a record. Delivery reads its current state, so a retry sends the latest and no buyer details are copied.
+export const outbox = pgTable(
+  "outbox",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id),
+    entityType: text("entity_type").$type<"checkout" | "access_grant">().notNull(),
+    entityId: uuid("entity_id").notNull(),
+    sourceVersion: integer("source_version").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("outbox_entity_version_unique").on(table.entityType, table.entityId, table.sourceVersion),
+    check("outbox_entity_type_check", sql`${table.entityType} IN ('checkout', 'access_grant')`),
+  ],
+);
+
+export type PaypalEventStatus = "pending" | "processed" | "ignored" | "failed";
 export type ProjectScope = { projectId: string; environment: "sandbox" | "live" };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { captureRefusal, fromPaypalValue, isOrderGone, PaypalError, toOrder, toPaypalValue } from "./index";
+import { captureRefusal, fromPaypalValue, isOrderGone, PaypalError, readEvent, toOrder, toPaypalValue } from "./index";
 
 describe("toPaypalValue", () => {
   it.each([
@@ -114,7 +114,8 @@ describe("toOrder", () => {
     ["PENDING", "pending"],
     ["DECLINED", "declined"],
     ["FAILED", "declined"],
-    ["REFUNDED", "other"],
+    ["REFUNDED", "refunded"],
+    ["PARTIALLY_REFUNDED", "refunded"],
     ["SOMETHING_NEW", "other"],
   ])("capture status %s is %s", (status, state) => {
     const [unit] = NEW_ORDER.purchase_units;
@@ -153,5 +154,86 @@ describe("what a refused capture means", () => {
     expect(isOrderGone(new PaypalError("rejected", "RESOURCE_NOT_FOUND"))).toBe(true);
     expect(isOrderGone(new PaypalError("rejected", "NOT_AUTHORIZED"))).toBe(false);
     expect(isOrderGone(new PaypalError("unavailable"))).toBe(false);
+  });
+});
+
+// Trimmed from what PayPal's sandbox really sent, 6 Nov 2026.
+const REAL_EVENTS = {
+  approved: {
+    resource_type: "checkout-order",
+    resource: {
+      id: "8A522041TA517552K",
+      status: "APPROVED",
+      purchase_units: [{ custom_id: "01a1af4b-5593-7712-8267-840fa1ad3760" }],
+      links: [{ rel: "capture", href: "https://api.sandbox.paypal.com/v2/checkout/orders/8A522041TA517552K/capture" }],
+    },
+  },
+  captured: {
+    resource_type: "capture",
+    resource: {
+      id: "9Y292266C6453680L",
+      status: "COMPLETED",
+      custom_id: "01a1af4b-5593-7712-8267-840fa1ad3760",
+      supplementary_data: { related_ids: { order_id: "8A522041TA517552K" } },
+      links: [{ rel: "up", href: "https://api.sandbox.paypal.com/v2/checkout/orders/8A522041TA517552K" }],
+    },
+  },
+  refunded: {
+    resource_type: "refund",
+    resource: {
+      id: "9LD10144R6977221S",
+      status: "COMPLETED",
+      custom_id: "01a1af43-ce2b-7092-8ad5-0feb71f153f2",
+      links: [
+        { rel: "self", href: "https://api.sandbox.paypal.com/v2/payments/refunds/9LD10144R6977221S" },
+        { rel: "up", href: "https://api.sandbox.paypal.com/v2/payments/captures/8K996419ET0148626" },
+      ],
+    },
+  },
+};
+
+describe("readEvent", () => {
+  it("an approved order names its checkout and order", () => {
+    expect(readEvent("CHECKOUT.ORDER.APPROVED", REAL_EVENTS.approved)).toEqual({
+      signal: "order_approved",
+      checkoutId: "01a1af4b-5593-7712-8267-840fa1ad3760",
+      orderId: "8A522041TA517552K",
+      captureId: null,
+    });
+  });
+
+  it.each(["PAYMENT.CAPTURE.COMPLETED", "PAYMENT.CAPTURE.DENIED"])("%s names its checkout and order", (type) => {
+    expect(readEvent(type, REAL_EVENTS.captured)).toEqual({
+      signal: "capture_changed",
+      checkoutId: "01a1af4b-5593-7712-8267-840fa1ad3760",
+      orderId: "8A522041TA517552K",
+      captureId: null,
+    });
+  });
+
+  it("a refund names its capture through its up link", () => {
+    expect(readEvent("PAYMENT.CAPTURE.REFUNDED", REAL_EVENTS.refunded)).toEqual({
+      signal: "capture_refunded",
+      checkoutId: "01a1af43-ce2b-7092-8ad5-0feb71f153f2",
+      orderId: null,
+      captureId: "8K996419ET0148626",
+    });
+  });
+
+  it("a refund whose up link isn't a capture names no capture", () => {
+    const resource = { custom_id: "x", links: [{ rel: "up", href: "https://api.sandbox.paypal.com/v2/payments/refunds/1" }] };
+    expect(readEvent("PAYMENT.CAPTURE.REFUNDED", { resource }).captureId).toBeNull();
+  });
+
+  it.each([
+    ["BILLING.SUBSCRIPTION.ACTIVATED", { resource: { id: "I-1", custom_id: "x" } }],
+    ["SOMETHING.NEW", REAL_EVENTS.captured],
+  ])("%s is not acted on", (type, payload) => {
+    expect(readEvent(type, payload)).toEqual({ signal: "other", checkoutId: null, orderId: null, captureId: null });
+  });
+
+  it.each([[null], ["text"], [{}], [{ resource: "text" }], [{ resource: { custom_id: 5 } }]])("%j names nothing, and doesn't throw", (payload) => {
+    const facts = readEvent("PAYMENT.CAPTURE.COMPLETED", payload);
+    expect(facts).toMatchObject({ checkoutId: null, orderId: null });
   });
 });

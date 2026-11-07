@@ -57,7 +57,7 @@ curl -X POST http://localhost:3100/v1/checkouts \
 Send the buyer to the `checkoutUrl` it returns, which uses `PUBLIC_BASE_URL`. They come back to your `returnUrl` with `?checkout=<id>`. That redirect proves nothing, so ask
 `GET /v1/checkouts/:id` from your backend. In sandbox, approve with a US personal sandbox account. On ngrok's free plan, the buyer first sees one warning page from ngrok.
 
-`pnpm test` runs the unit tests. With the stack running, `pnpm test:e2e` runs the end-to-end tests. `E2E_WRITE_DB=1` adds the tests that save catalog
+`pnpm test` runs the unit tests. `E2E_WRITE_DB=1 pnpm test:invariants` runs the billing invariants against real Postgres; use a throwaway database with no worker running. With the stack running, `pnpm test:e2e` runs the end-to-end tests. `E2E_WRITE_DB=1` adds the tests that save catalog
 versions, API keys and quotes, so use it only on a throwaway database. Adding `E2E_PAYPAL=1`, with `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` set, also makes real, unapproved
 sandbox orders.
 
@@ -84,9 +84,13 @@ Only capabilities with a recorded proof are marked verified.
 | API keys and trusted quotes: fixed price, customer binding, expiry, safe retries | ✅ verified locally | `tests/e2e/quotes.test.ts` against a production build; a real payment used one; not yet hosted |
 | BillingRelay checkout: real sandbox purchase, one order, one capture | ✅ verified locally | Capture `3GN46362VS501844G` by a real sandbox buyer, `tests/e2e/checkouts.test.ts`; not yet hosted |
 | Unknown outcomes never charge twice: lost answer, hang, server killed mid-capture | ✅ verified locally | Lost answer and hang injected on real orders, kill was real; PayPal showed one capture each time |
-| Webhook route: verified and stored before acknowledging | ✅ verified locally | Real events through a tunnel, replayed and altered; not yet processed by a worker |
+| Webhook route: verified and stored before acknowledging | ✅ verified locally | Real events through a tunnel, replayed and altered |
+| Durable processing: a buyer who never returns is captured, one effect per payment, restarts lose nothing | ✅ verified locally | Real buyers and real events, worker killed with `SIGKILL` mid-way, two workers at once, `tests/invariants/processing.test.ts`; not yet hosted |
+| Access benefits and the outbox | ✅ verified locally | Applied once from the snapshot; every change has its outbox row, proven with forced rollbacks. Nothing reads the outbox until sync is built |
+| Refunds: full or partial moves money to review and restricts access | ✅ verified locally | Real sandbox refunds with their real events. No clawback, by design |
+| Denied captures | ⚠️ not seen for real | Handled by the same path as a decline; PayPal's sandbox hasn't sent this event |
 | Declined and pending captures | ⚠️ handling verified | Decline used PayPal's mock header; pending was injected |
-| Inbox processing and ledger | ⬜ not built | |
+| Credit ledger | ⬜ not built | A paid credit pack stays `fulfillment: pending` until it exists |
 | Credit packs and atomic consumption | ⬜ not built | |
 | One-way sync to an independent Postgres | ⬜ not built | |
 | AI billing setup (reviewed draft) | ⬜ not built | |

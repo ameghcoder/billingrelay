@@ -11,9 +11,12 @@ export {
   type SaveCatalogResult,
 } from "./catalog";
 export {
+  claimCheckoutForBenefits,
+  claimUnclearCheckout,
   createCheckout,
   findCheckout,
   findCheckoutByKey,
+  findCheckoutForEvent,
   findCheckoutIdByQuote,
   getCheckout,
   markCaptureRequested,
@@ -30,7 +33,15 @@ export {
   type ActiveApiKey,
   type ApiKeyRecord,
 } from "./api-keys";
-export { storePaypalEvent } from "./paypal-events";
+export { applyCheckoutBenefits, restrictRefundedCheckout } from "./fulfillment";
+export {
+  claimPaypalEvent,
+  failAbandonedPaypalEvents,
+  finishPaypalEvent,
+  retryPaypalEvent,
+  storePaypalEvent,
+  type ClaimedPaypalEvent,
+} from "./paypal-events";
 export { createQuote, findQuoteByKey, getQuote, type QuoteRecord } from "./quotes";
 export { addReturnOrigin, isReturnOriginAllowed, listReturnOrigins, removeReturnOrigin, type ReturnOriginRecord } from "./return-origins";
 export type { ProjectScope } from "./schema";

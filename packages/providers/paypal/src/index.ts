@@ -214,7 +214,7 @@ const orderSchema = z.looseObject({
 
 export type PaypalCapture = {
   id: string;
-  state: "completed" | "pending" | "declined" | "other";
+  state: "completed" | "refunded" | "pending" | "declined" | "other";
   amount: number | null;
   currency: string;
   customId: string | null;
@@ -246,6 +246,8 @@ const ORDER_STAGES = new Map<string, PaypalOrder["stage"]>([
 
 const CAPTURE_STATES = new Map<string, PaypalCapture["state"]>([
   ["COMPLETED", "completed"],
+  ["REFUNDED", "refunded"],
+  ["PARTIALLY_REFUNDED", "refunded"],
   ["PENDING", "pending"],
   ["DECLINED", "declined"],
   ["FAILED", "declined"],
@@ -411,4 +413,48 @@ export async function verifyEvent(session: PaypalSession, webhookId: string, hea
     if (error instanceof PaypalError && error.code === "INVALID_REQUEST") return false;
     throw error;
   }
+}
+
+const eventSchema = z.looseObject({
+  resource: z
+    .looseObject({
+      id: z.string().optional(),
+      custom_id: z.string().optional(),
+      purchase_units: z.array(z.looseObject({ custom_id: z.string().optional() })).optional(),
+      links: z.array(z.looseObject({ rel: z.string(), href: z.string() })).optional(),
+      supplementary_data: z.looseObject({ related_ids: z.looseObject({ order_id: z.string().optional() }).optional() }).optional(),
+    })
+    .optional(),
+});
+
+export type PaypalEventFacts = {
+  signal: "order_approved" | "capture_changed" | "capture_refunded" | "other";
+  checkoutId: string | null;
+  orderId: string | null;
+  captureId: string | null;
+};
+
+const EVENT_SIGNALS = new Map<string, PaypalEventFacts["signal"]>([
+  ["CHECKOUT.ORDER.APPROVED", "order_approved"],
+  ["PAYMENT.CAPTURE.COMPLETED", "capture_changed"],
+  ["PAYMENT.CAPTURE.DENIED", "capture_changed"],
+  ["PAYMENT.CAPTURE.REFUNDED", "capture_refunded"],
+]);
+
+const CAPTURE_PATH = /\/v2\/payments\/captures\/([^/?#]+)/;
+
+/** Which payment an event is about, from PayPal's real payloads. It only says where to look: the facts are always re-read from PayPal. */
+export function readEvent(eventType: string, payload: unknown): PaypalEventFacts {
+  const signal = EVENT_SIGNALS.get(eventType) ?? "other";
+  const resource = eventSchema.safeParse(payload).data?.resource;
+  if (signal === "other" || !resource) return { signal, checkoutId: null, orderId: null, captureId: null };
+
+  // A refund names its capture only through its "up" link.
+  const upLink = resource.links?.find((link) => link.rel === "up")?.href;
+  return {
+    signal,
+    checkoutId: resource.custom_id ?? resource.purchase_units?.[0]?.custom_id ?? null,
+    orderId: signal === "order_approved" ? (resource.id ?? null) : (resource.supplementary_data?.related_ids?.order_id ?? null),
+    captureId: signal === "capture_refunded" ? (upLink?.match(CAPTURE_PATH)?.[1] ?? null) : null,
+  };
 }

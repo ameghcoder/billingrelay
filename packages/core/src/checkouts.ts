@@ -23,6 +23,11 @@ export const MONEY_REASONS = [
 ] as const;
 export type MoneyReason = (typeof MONEY_REASONS)[number];
 
+export const FULFILLMENT_STATUSES = ["pending", "applied", "restricted", "failed"] as const;
+export type FulfillmentStatus = (typeof FULFILLMENT_STATUSES)[number];
+export const FULFILLMENT_REASONS = ["waiting_for_credit_ledger"] as const;
+export type FulfillmentReason = (typeof FULFILLMENT_REASONS)[number];
+
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /** The origin of an address a buyer may be sent to, or null. HTTPS only, except on this machine. */
@@ -77,7 +82,7 @@ export const checkoutResponseSchema = z.object({
   checkoutUrl: z.string(),
   expiresAt: z.string(),
   money: moneySchema,
-  fulfillment: z.literal("pending"),
+  fulfillment: z.enum(FULFILLMENT_STATUSES),
   sync: z.literal("not_configured"),
   nextAction: nextActionSchema,
   snapshot: quoteSnapshotSchema,
@@ -134,7 +139,7 @@ type OrderFacts = {
 
 type CaptureFacts = {
   id: string;
-  state: "completed" | "pending" | "declined" | "other";
+  state: "completed" | "refunded" | "pending" | "declined" | "other";
   amount: number | null;
   currency: string;
   customId: string | null;
@@ -166,7 +171,8 @@ export function judgeCaptures(expected: Expected, captures: CaptureFacts[]): Cap
 
   if (capture.state === "pending") return { moneyStatus: "approved", moneyReason: null, capture };
   if (capture.state === "declined") return { moneyStatus: "failed", moneyReason: "paypal_declined", capture };
-  if (capture.state !== "completed") return { moneyStatus: "unresolved", moneyReason: "unexpected_capture", capture };
+  // A refunded capture did complete. It's judged the same way, and the refund's own event then moves it to review.
+  if (capture.state !== "completed" && capture.state !== "refunded") return { moneyStatus: "unresolved", moneyReason: "unexpected_capture", capture };
 
   let moneyReason: MoneyReason | null = null;
   // A capture that doesn't repeat the reference isn't a mismatch: it came from the order we checked.

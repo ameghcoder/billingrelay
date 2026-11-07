@@ -10,7 +10,9 @@
     "typecheck": "tsc"
   },
   "dependencies": {
+    "@billingrelay/billing": "workspace:*",
     "@billingrelay/db": "workspace:*",
+    "@billingrelay/provider-paypal": "workspace:*",
     "pg-boss": "12.38.0"
   },
   "devDependencies": {

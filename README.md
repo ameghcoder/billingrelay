@@ -62,6 +62,8 @@ curl -X POST http://localhost:3100/v1/checkouts \
 Send the buyer to the `checkoutUrl` it returns, which uses `PUBLIC_BASE_URL`. They come back to your `returnUrl` with `?checkout=<id>`. That redirect proves nothing, so ask
 `GET /v1/checkouts/:id` from your backend. In sandbox, approve with a US personal sandbox account. On ngrok's free plan, the buyer first sees one warning page from ngrok.
 
+To host it on Render, see `docs/deploy-render.md`.
+
 `pnpm test` runs the unit tests. `E2E_WRITE_DB=1 pnpm test:invariants` runs the billing invariants against real Postgres; use a throwaway database with no worker running. Setting `DESTINATION_OWNER_URL` to a throwaway destination server adds the sync invariants, which create databases there. With the stack running, `pnpm test:e2e` runs the end-to-end tests. `E2E_WRITE_DB=1` adds the tests that save catalog
 versions, API keys and quotes, so use it only on a throwaway database. Adding `E2E_PAYPAL=1`, with `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` set, also makes real, unapproved
 sandbox orders.

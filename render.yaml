@@ -1,0 +1,59 @@
+# Render Blueprint: the web app, the worker and BillingRelay's own Postgres. Steps and checks: docs/deploy-render.md.
+# The merchant's destination database is not here: it's the merchant's, reached only by the worker.
+
+databases:
+  - name: billingrelay-source
+    plan: basic-256mb
+    region: oregon
+    postgresMajorVersion: "17"
+    databaseName: billingrelay
+    user: billingrelay
+    # Only Render's own network reaches it. Migrations run from a service's Shell.
+    ipAllowList: []
+
+services:
+  - type: web
+    name: billingrelay-web
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @billingrelay/web build
+    startCommand: pnpm --filter @billingrelay/web start
+    # No healthCheckPath: /api/health fails while the worker is down, and Render would then stop routing checkout traffic too.
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: billingrelay-source
+          property: connectionString
+      - key: BETTER_AUTH_SECRET
+        generateValue: true
+      - key: SECRETS_ENCRYPTION_KEY
+        generateValue: true
+      # The service's https address, e.g. https://billingrelay-web.onrender.com. Both are asked for once, at creation.
+      - key: BETTER_AUTH_URL
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      # CLIENT_IP_HEADER is added by hand once Render's client IP header is confirmed; until then all clients share one count.
+
+  - type: worker
+    name: billingrelay-worker
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @billingrelay/worker build
+    startCommand: cd apps/worker && NODE_ENV=production node dist/index.mjs
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: billingrelay-source
+          property: connectionString
+      # The same key as the web app, which encrypted the stored PayPal secrets.
+      - key: SECRETS_ENCRYPTION_KEY
+        fromService:
+          type: web
+          name: billingrelay-web
+          envVarKey: SECRETS_ENCRYPTION_KEY
+      # The destination as the restricted `billingrelay_sync` role, verify-full with the CA file. Empty for API-only.
+      - key: DESTINATION_DATABASE_URL
+        sync: false

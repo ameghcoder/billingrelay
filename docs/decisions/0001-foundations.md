@@ -48,3 +48,7 @@ Status: accepted, 2026-10-28 to 2026-11-05.
     let it pick a new address on every try. Without one, everyone shares a single count, which fails closed.
 32. **PayPal tokens are reused in memory, keyed by a hash of the credentials.** A new secret can't get an old token, a `401` drops the token
     as a safe-to-retry failure, and the "check connection" button always asks PayPal for a new one.
+33. **On Render, the source database takes no outside connections, and migrations run by hand from the web service's shell.** Nothing
+    migrates on deploy, so a migration is always a step someone chose. Render's health check isn't used for routing, because health includes the worker.
+34. **A TLS destination's CA is a file named in the URL (`sslrootcert`), not code.** On Render it's a secret file. node-postgres reads it
+    the same way everywhere, and the worker still refuses any URL without verified TLS.

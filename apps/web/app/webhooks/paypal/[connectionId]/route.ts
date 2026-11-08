@@ -4,6 +4,7 @@ import { getPaypalConnectionById, storePaypalEvent } from "@billingrelay/db";
 import { hasSignatureHeaders, PaypalError, verifyEvent } from "@billingrelay/provider-paypal";
 import { z } from "zod";
 import { apiError, isUuid, jsonResponse, readBodyUpTo } from "@/lib/api-response";
+import { clientIp, limiter, RATE_RULES, tooManyRequests } from "@/lib/rate-limit";
 
 const MAX_BODY_BYTES = 256 * 1024;
 
@@ -27,6 +28,11 @@ export async function POST(request: Request, context: { params: Promise<{ connec
     const { connectionId } = await context.params;
     const connection = isUuid(connectionId) ? await getPaypalConnectionById(connectionId) : null;
     if (!connection?.webhookId || connection.environment !== "sandbox") return apiError(404, "not_found", "No such webhook");
+    // Each refused event costs two PayPal calls. Per address, so PayPal's own senders aren't blocked by someone else's flood;
+    // and PayPal resends anything not answered 2xx, so a 429 loses nothing.
+    const floodKey = `${clientIp(request.headers)} ${connectionId}`;
+    const refusedSoFar = limiter.check(RATE_RULES.webhookRefused, floodKey);
+    if (!refusedSoFar.allowed) return tooManyRequests(refusedSoFar);
 
     const rawBody = await readBodyUpTo(request, MAX_BODY_BYTES);
     if (rawBody === null) return apiError(413, "request_too_large", "The event is too large");
@@ -39,6 +45,7 @@ export async function POST(request: Request, context: { params: Promise<{ connec
     if (!verified) {
       // Nothing from the event: it's unverified, so anyone could write lines into the log with it.
       console.warn("PayPal event refused");
+      limiter.hit(RATE_RULES.webhookRefused, floodKey);
       return notVerified();
     }
 

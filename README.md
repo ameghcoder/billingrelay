@@ -19,6 +19,8 @@ In `.env.local`, set:
 - `BETTER_AUTH_SECRET` and `SECRETS_ENCRYPTION_KEY`, each from its own `openssl rand -base64 32`
 - `OPERATOR_EMAIL` and `OPERATOR_PASSWORD` (at least 12 characters)
 - `PUBLIC_BASE_URL`, the public https address PayPal can reach, such as an ngrok domain
+- When hosted: `CLIENT_IP_HEADER`, the header your host's proxy sets to the client's IP. Rate limits count per address from it;
+  without it, every client shares one count. Never use `X-Forwarded-For`, since clients can set it
 - Optional, to copy billing state into your own Postgres: `DESTINATION_OWNER_URL` and `DESTINATION_SYNC_PASSWORD` for the one-time setup, then
   `DESTINATION_DATABASE_URL` as the `billingrelay_sync` role with that password. Leave them empty for API-only
 
@@ -96,6 +98,7 @@ Only capabilities with a recorded proof are marked verified.
 | Credit ledger | ⬜ not built | A paid credit pack stays `fulfillment: pending` until it exists |
 | Credit packs and atomic consumption | ⬜ not built | |
 | One-way sync to an independent Postgres | ✅ verified locally | A separate Postgres server stopped during a real purchase converged with one row; a worker killed after the destination committed, two workers, a hanging destination, a refused row and a restricted role, `tests/invariants/sync.test.ts`. Not yet hosted, and no TLS destination yet |
+| Rate limits and PayPal token reuse | ✅ verified locally | Floods of forged events, wrong keys and sign-ins stop at their limits without blocking other addresses; a real purchase used one token. Per process, and Render's client IP header not yet confirmed |
 | AI billing setup (reviewed draft) | ⬜ not built | |
 | AI investigation and safe retry | ⬜ not built | |
 

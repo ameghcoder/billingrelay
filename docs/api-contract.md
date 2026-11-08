@@ -22,6 +22,7 @@ Status: **proposed (M00)**. Shapes become Zod schemas in M01; this doc stays the
 | 409 | Idempotency conflict, or state conflict (e.g. an active subscription already exists) |
 | 413 | Request body over 64 KB |
 | 422 | Valid request a business rule rejects (insufficient credits, expired quote) |
+| 429 | `rate_limited`: too many requests. `Retry-After` gives the seconds to wait |
 | 502 | PayPal call failed; the outcome is known to be "not done" |
 | 503 | PayPal outcome unknown; the operation is recorded as unresolved, never retried as a new charge |
 
@@ -150,14 +151,29 @@ Sync never affects money: a destination that's down only delays the copy.
 Holding the link is the only credential. A GET never changes anything, and anyone can call these two POSTs, because they only ever advance a
 checkout toward what PayPal itself reports.
 
+## Rate limits
+
+Per web process, in memory, in one-minute windows. "Address" is the client's IP from the one header named by `CLIENT_IP_HEADER`.
+Without it, every client shares one count.
+
+| Route | Counted per | Limit |
+|---|---|---|
+| `/v1/*` with a valid key | key | 600 |
+| `/v1/*` refused for its key | address | 120 refusals, then every request from it gets `429` |
+| `POST /checkout/:id/pay` | address and checkout | 10 |
+| `POST /checkout/:id/confirm` | address and checkout | 20 (the page confirms up to 8 times per load) |
+| `GET /checkout/:id` and `/return` | address | 60. The page says so, since a page can't answer `429` |
+| `POST /webhooks/paypal/:connectionId` | address and connection, events PayPal refused | 30 refusals, then `429` before any PayPal call. PayPal resends anything not `2xx`, so a real event caught in it arrives later |
+| Operator sign-in | Better Auth's own limit, on the same address | |
+
 ## PayPal webhooks
 
 `POST /webhooks/paypal/:connectionId`: verify the signature for that connection's webhook ID,
 store the event in the inbox, then return `200`. No billing logic, AI or destination write happens
 inside this request.
 
-`404` for an unknown connection, `413` over 256 KB, `400 not_verified` for anything PayPal doesn't verify, and `503` when PayPal can't answer,
-so it sends the event again. The same event ID stores one row.
+`404` for an unknown connection, `413` over 256 KB, `400 not_verified` for anything PayPal doesn't verify, `429` after 30 of those in a minute,
+and `503` when PayPal can't answer, so it sends the event again. The same event ID stores one row.
 
 The worker reads stored events afterwards. An event only says which checkout to look at: the worker asks PayPal for the facts, using the same
 code as `/confirm`. Stored events end as `processed`, `ignored` (nothing of ours, or a type with no handler yet) or `failed` after 8 attempts.

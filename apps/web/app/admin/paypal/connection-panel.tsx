@@ -10,6 +10,7 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { LocalTime } from "@/components/local-time";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -148,7 +149,7 @@ export function ConnectionPanel({ initial }: { initial: PaypalConnectionView | n
                   </div>
                 ))}
               <dt className="text-muted-foreground">Last checked</dt>
-              <dd>{connection.lastCheckedAt ? new Date(connection.lastCheckedAt).toLocaleString() : "Never"}</dd>
+              <dd>{connection.lastCheckedAt ? <LocalTime value={connection.lastCheckedAt} /> : "Never"}</dd>
             </dl>
             <div className="flex gap-2">
               <Button

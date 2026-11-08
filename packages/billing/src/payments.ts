@@ -15,6 +15,7 @@ import {
   createOrder,
   getOrder,
   isOrderGone,
+  openReusedSession,
   openSession,
   PaypalError,
   type PaypalOrder,
@@ -33,14 +34,16 @@ const expectedFor = (checkout: CheckoutRecord) => ({
 
 export const secretBinding = (projectId: string, environment: string) => `paypal_connection:${projectId}:${environment}`;
 
-export async function openStoredSession(connection: PaypalConnectionRecord): Promise<PaypalSession> {
+/** Reuses a recent token unless `fresh` is set, which a connection check needs to really ask PayPal. */
+export async function openStoredSession(connection: PaypalConnectionRecord, { fresh = false } = {}): Promise<PaypalSession> {
   const secretEncrypted = await getPaypalConnectionSecret(connection.id);
   if (!secretEncrypted) throw new SecretUnreadableError();
-  return openSession({
+  const credentials = {
     environment: connection.environment,
     clientId: connection.clientId,
     clientSecret: decryptSecret(secretEncrypted, secretBinding(connection.projectId, connection.environment)),
-  });
+  };
+  return fresh ? openSession(credentials) : openReusedSession(credentials);
 }
 
 async function sessionFor(checkout: CheckoutRecord): Promise<PaypalSession> {

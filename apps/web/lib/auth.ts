@@ -10,6 +10,8 @@ function createAuth() {
     emailAndPassword: { enabled: true, disableSignUp: true },
     // Better Auth only enables this in production by default; dev should behave the same.
     rateLimit: { enabled: true },
+    // Only the header this deployment's proxy sets. By default it trusts X-Forwarded-For, which a client can fake on every try.
+    advanced: { ipAddress: { ipAddressHeaders: process.env.CLIENT_IP_HEADER ? [process.env.CLIENT_IP_HEADER] : [] } },
   });
 }
 

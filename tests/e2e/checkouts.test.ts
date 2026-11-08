@@ -358,13 +358,16 @@ describe.runIf(process.env.E2E_WRITE_DB === "1" && process.env.E2E_PAYPAL === "1
       expect((await status(id)).paypal.orderId).toBe(stored);
     });
 
-    it("20 clicks at once make one order", async () => {
+    it("20 clicks at once make one order, and past 10 a minute the rest are told to wait", async () => {
       const { id } = await newCheckout();
       const answers = await Promise.all(Array.from({ length: 20 }, () => fetch(`${BASE_URL}/checkout/${id}/pay`, { method: "POST" })));
-      const bodies = await Promise.all(answers.map((res) => res.json() as Promise<{ approvalUrl?: string }>));
+      const bodies = await Promise.all(answers.map((res) => res.json() as Promise<{ approvalUrl?: string; error?: { code: string } }>));
       const stored = (await status(id)).paypal.orderId!;
-      expect(answers.map((res) => res.status)).toEqual(Array(20).fill(200));
-      for (const body of bodies) expect(body.approvalUrl).toContain(stored);
+      expect(answers.map((res) => res.status).sort()).toEqual([...Array(10).fill(200), ...Array(10).fill(429)]);
+      for (const [index, body] of bodies.entries()) {
+        if (answers[index]!.status === 200) expect(body.approvalUrl).toContain(stored);
+        else expect(body.error?.code).toBe("rate_limited");
+      }
     });
   });
 

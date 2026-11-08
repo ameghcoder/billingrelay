@@ -41,3 +41,10 @@ Status: accepted, 2026-10-28 to 2026-11-05.
     acknowledgement all need nothing more than that one `WHERE`.
 28. **A destination outage uses up no attempts.** Only a row the destination refuses counts towards `failed`, so a long outage still catches up by itself.
 29. **The worker refuses a destination role that could create objects.** A wrong URL can't let a bug damage the merchant's database.
+30. **Rate limits are in memory, per web process, and count only failures where success must never be refused.** One Render instance makes
+    this exact; a shared store waits until there are several. Webhooks and `/v1` key checks count refusals, so real PayPal events and valid
+    keys never use up a limit; with a trusted address, someone else's flood doesn't block them either.
+31. **The client's address comes only from one header the deployment names.** Any header a client can send, such as `X-Forwarded-For`, would
+    let it pick a new address on every try. Without one, everyone shares a single count, which fails closed.
+32. **PayPal tokens are reused in memory, keyed by a hash of the credentials.** A new secret can't get an old token, a `401` drops the token
+    as a safe-to-retry failure, and the "check connection" button always asks PayPal for a new one.

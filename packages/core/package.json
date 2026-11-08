@@ -10,6 +10,7 @@
     "./idempotency": "./src/idempotency.ts",
     "./paypal-connection": "./src/paypal-connection.ts",
     "./quotes": "./src/quotes.ts",
+    "./rate-limit": "./src/rate-limit.ts",
     "./secrets": "./src/secrets.ts",
     "./sync": "./src/sync.ts"
   },

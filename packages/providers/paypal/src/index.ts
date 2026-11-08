@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 
 // Each connection's environment picks its address. Not an env var: one deploy can hold both
@@ -56,7 +57,7 @@ const errorBodySchema = z.looseObject({
   error: z.string().optional(),
   details: z.array(z.looseObject({ issue: z.string().optional() })).optional(),
 });
-const tokenSchema = z.looseObject({ access_token: z.string(), scope: z.string() });
+const tokenSchema = z.looseObject({ access_token: z.string(), scope: z.string(), expires_in: z.number().int().positive() });
 const webhookSchema = z.looseObject({
   id: z.string(),
   url: z.string(),
@@ -79,6 +80,12 @@ async function send(environment: PaypalEnvironment, path: string, init: RequestI
   if (response.ok) return response;
 
   const debugId = response.headers.get("paypal-debug-id") ?? undefined;
+  const bearer = /^Bearer (\S+)$/.exec(new Headers(init.headers).get("authorization") ?? "")?.[1];
+  if (response.status === 401 && bearer) {
+    // A token PayPal no longer accepts. Nothing ran, so the caller can safely try again with a new one.
+    forgetToken(bearer);
+    throw new PaypalError("unavailable", "token_expired", debugId);
+  }
   const body = errorBodySchema.safeParse(await response.json().catch(() => null));
   const code = body.success ? (body.data.name ?? body.data.error) : undefined;
   const issue = body.success ? body.data.details?.[0]?.issue : undefined;
@@ -99,7 +106,13 @@ function authorized(session: PaypalSession, init: RequestInit = {}): RequestInit
   };
 }
 
-export async function openSession({ environment, clientId, clientSecret }: PaypalCredentials): Promise<PaypalSession> {
+type CachedSession = { session: PaypalSession; expiresAt: number };
+
+const TOKEN_MARGIN_MS = 5 * 60_000;
+// In memory only. Keyed by a hash of the credentials, so a new secret never gets an old token.
+const sessions = new Map<string, { pending: Promise<CachedSession>; settled?: CachedSession }>();
+
+async function requestToken({ environment, clientId, clientSecret }: PaypalCredentials): Promise<CachedSession> {
   const response = await send(environment, "/v1/oauth2/token", {
     method: "POST",
     headers: {
@@ -109,7 +122,42 @@ export async function openSession({ environment, clientId, clientSecret }: Paypa
     body: "grant_type=client_credentials",
   });
   const token = await parse(response, tokenSchema);
-  return { environment, accessToken: token.access_token, scopes: token.scope.split(" ") };
+  return {
+    session: { environment, accessToken: token.access_token, scopes: token.scope.split(" ") },
+    expiresAt: Date.now() + token.expires_in * 1000 - TOKEN_MARGIN_MS,
+  };
+}
+
+/** Always asks PayPal: for proving credentials, never reused. */
+export async function openSession(credentials: PaypalCredentials): Promise<PaypalSession> {
+  return (await requestToken(credentials)).session;
+}
+
+const credentialsKey = ({ environment, clientId, clientSecret }: PaypalCredentials) =>
+  createHash("sha256").update(`${environment}\0${clientId}\0${clientSecret}`).digest("hex");
+
+function forgetToken(accessToken: string) {
+  for (const [key, entry] of sessions) if (entry.settled?.session.accessToken === accessToken) sessions.delete(key);
+}
+
+/**
+ * Reuses a token until 5 minutes before PayPal says it expires. Each new token is a PayPal call, and public
+ * requests (confirm, webhooks) would otherwise use up PayPal's rate limit. Concurrent callers share one request.
+ */
+export async function openReusedSession(credentials: PaypalCredentials): Promise<PaypalSession> {
+  const key = credentialsKey(credentials);
+  const cached = sessions.get(key);
+  if (cached && (!cached.settled || cached.settled.expiresAt > Date.now())) return (await cached.pending).session;
+
+  const entry: { pending: Promise<CachedSession>; settled?: CachedSession } = { pending: requestToken(credentials) };
+  sessions.set(key, entry);
+  try {
+    entry.settled = await entry.pending;
+    return entry.settled.session;
+  } catch (error) {
+    if (sessions.get(key) === entry) sessions.delete(key);
+    throw error;
+  }
 }
 
 export function readCapabilities(scopes: string[]): PaypalCapabilities {

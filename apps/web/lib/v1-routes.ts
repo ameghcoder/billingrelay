@@ -1,6 +1,7 @@
 import { hashApiKey } from "@billingrelay/core/secrets";
 import { findActiveApiKey, type ActiveApiKey } from "@billingrelay/db";
 import { apiError, readBodyUpTo } from "./api-response";
+import { clientIp, limiter, RATE_RULES, tooManyRequests } from "./rate-limit";
 
 const MAX_BODY_BYTES = 64 * 1024;
 
@@ -12,9 +13,18 @@ type ApiKeyHandler<C> = (args: { request: Request; apiKey: ActiveApiKey; context
 export function withApiKey<C = unknown>(handler: ApiKeyHandler<C>) {
   return async (request: Request, context: C): Promise<Response> => {
     try {
+      const ip = clientIp(request.headers);
+      const refusedSoFar = limiter.check(RATE_RULES.apiKeyRefusedPerIp, ip);
+      if (!refusedSoFar.allowed) return tooManyRequests(refusedSoFar);
+
       const token = readBearerToken(request);
       const apiKey = token ? await findActiveApiKey(hashApiKey(token)) : null;
-      if (!apiKey) return apiError(401, "invalid_api_key", "Send a valid API key: Authorization: Bearer <key>");
+      if (!apiKey) {
+        limiter.hit(RATE_RULES.apiKeyRefusedPerIp, ip);
+        return apiError(401, "invalid_api_key", "Send a valid API key: Authorization: Bearer <key>");
+      }
+      const perKey = limiter.hit(RATE_RULES.apiKey, apiKey.id);
+      if (!perKey.allowed) return tooManyRequests(perKey);
       if (apiKey.environment !== "sandbox") return apiError(422, "live_disabled", "Live is not enabled");
       return await handler({ request, apiKey, context });
     } catch (error) {

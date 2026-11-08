@@ -88,7 +88,7 @@ export async function checkConnection(
 ): Promise<PaypalConnectionRecord> {
   let session: PaypalSession;
   try {
-    session = await openStoredSession(connection);
+    session = await openStoredSession(connection, { fresh: true });
   } catch (error) {
     return updatePaypalConnectionStatus(connection.id, {
       ...keepWebhookState(connection),

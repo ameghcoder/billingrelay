@@ -19,10 +19,13 @@ In `.env.local`, set:
 - `BETTER_AUTH_SECRET` and `SECRETS_ENCRYPTION_KEY`, each from its own `openssl rand -base64 32`
 - `OPERATOR_EMAIL` and `OPERATOR_PASSWORD` (at least 12 characters)
 - `PUBLIC_BASE_URL`, the public https address PayPal can reach, such as an ngrok domain
+- Optional, to copy billing state into your own Postgres: `DESTINATION_OWNER_URL` and `DESTINATION_SYNC_PASSWORD` for the one-time setup, then
+  `DESTINATION_DATABASE_URL` as the `billingrelay_sync` role with that password. Leave them empty for API-only
 
 ```sh
 docker compose up -d --wait   # source database on 5433, destination on 5434
 pnpm db:migrate
+pnpm destination:setup        # once: the destination's tables and the worker's restricted role
 pnpm db:seed                  # creates the one operator and the project
 pnpm dev                      # web on http://localhost:3100, plus the worker
 ```
@@ -57,7 +60,7 @@ curl -X POST http://localhost:3100/v1/checkouts \
 Send the buyer to the `checkoutUrl` it returns, which uses `PUBLIC_BASE_URL`. They come back to your `returnUrl` with `?checkout=<id>`. That redirect proves nothing, so ask
 `GET /v1/checkouts/:id` from your backend. In sandbox, approve with a US personal sandbox account. On ngrok's free plan, the buyer first sees one warning page from ngrok.
 
-`pnpm test` runs the unit tests. `E2E_WRITE_DB=1 pnpm test:invariants` runs the billing invariants against real Postgres; use a throwaway database with no worker running. With the stack running, `pnpm test:e2e` runs the end-to-end tests. `E2E_WRITE_DB=1` adds the tests that save catalog
+`pnpm test` runs the unit tests. `E2E_WRITE_DB=1 pnpm test:invariants` runs the billing invariants against real Postgres; use a throwaway database with no worker running. Setting `DESTINATION_OWNER_URL` to a throwaway destination server adds the sync invariants, which create databases there. With the stack running, `pnpm test:e2e` runs the end-to-end tests. `E2E_WRITE_DB=1` adds the tests that save catalog
 versions, API keys and quotes, so use it only on a throwaway database. Adding `E2E_PAYPAL=1`, with `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` set, also makes real, unapproved
 sandbox orders.
 
@@ -86,13 +89,13 @@ Only capabilities with a recorded proof are marked verified.
 | Unknown outcomes never charge twice: lost answer, hang, server killed mid-capture | ✅ verified locally | Lost answer and hang injected on real orders, kill was real; PayPal showed one capture each time |
 | Webhook route: verified and stored before acknowledging | ✅ verified locally | Real events through a tunnel, replayed and altered |
 | Durable processing: a buyer who never returns is captured, one effect per payment, restarts lose nothing | ✅ verified locally | Real buyers and real events, worker killed with `SIGKILL` mid-way, two workers at once, `tests/invariants/processing.test.ts`; not yet hosted |
-| Access benefits and the outbox | ✅ verified locally | Applied once from the snapshot; every change has its outbox row, proven with forced rollbacks. Nothing reads the outbox until sync is built |
+| Access benefits and the outbox | ✅ verified locally | Applied once from the snapshot; every change has its outbox row, proven with forced rollbacks |
 | Refunds: full or partial moves money to review and restricts access | ✅ verified locally | Real sandbox refunds with their real events. No clawback, by design |
 | Denied captures | ⚠️ not seen for real | Handled by the same path as a decline; PayPal's sandbox hasn't sent this event |
 | Declined and pending captures | ⚠️ handling verified | Decline used PayPal's mock header; pending was injected |
 | Credit ledger | ⬜ not built | A paid credit pack stays `fulfillment: pending` until it exists |
 | Credit packs and atomic consumption | ⬜ not built | |
-| One-way sync to an independent Postgres | ⬜ not built | |
+| One-way sync to an independent Postgres | ✅ verified locally | A separate Postgres server stopped during a real purchase converged with one row; a worker killed after the destination committed, two workers, a hanging destination, a refused row and a restricted role, `tests/invariants/sync.test.ts`. Not yet hosted, and no TLS destination yet |
 | AI billing setup (reviewed draft) | ⬜ not built | |
 | AI investigation and safe retry | ⬜ not built | |
 

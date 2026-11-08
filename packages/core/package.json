@@ -10,7 +10,8 @@
     "./idempotency": "./src/idempotency.ts",
     "./paypal-connection": "./src/paypal-connection.ts",
     "./quotes": "./src/quotes.ts",
-    "./secrets": "./src/secrets.ts"
+    "./secrets": "./src/secrets.ts",
+    "./sync": "./src/sync.ts"
   },
   "scripts": {
     "typecheck": "tsc"

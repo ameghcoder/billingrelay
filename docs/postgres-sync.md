@@ -62,6 +62,39 @@ SET balance = EXCLUDED.balance,
 WHERE EXCLUDED.source_version > b.source_version;
 ```
 
+## As built
+
+One destination per deployment, set by `DESTINATION_DATABASE_URL` on the worker only. Rows carry `project_id`, so a per-project setting can
+come later. A form that accepts a database URL is an SSRF risk, so there isn't one.
+
+**Setup, once, by the destination's owner.** `pnpm destination:setup` with `DESTINATION_OWNER_URL` (and `DESTINATION_SYNC_PASSWORD` to let
+the worker's role log in). It creates schema `billingrelay` and the role `billingrelay_sync`. That role can `SELECT`, `INSERT` and `UPDATE`
+its own tables and nothing else: no `DELETE`, `CREATE` or `DROP`. It's plain SQL in `packages/sync-postgres/migrations/`, so it can also be
+pasted into an SQL editor. An existing `billingrelay` schema it didn't make stops it before anything changes. Setup accepts no other schema
+name yet.
+
+**Tables.** `customers` (your user ID is `external_customer_id`), `purchases` (one per checkout, from its first payment change), `access` (one
+per paid purchase that grants access; a refund makes it `restricted`) and `schema_version`. Nothing is ever deleted. Never copied: the buyer's
+email or name, PayPal's raw events, API keys. Subscriptions and balances arrive with M09 and M11. An unpaid checkout isn't copied, and
+`expired` isn't a stored status, so `purchases.expires_at` is there instead. Decide access from `access`.
+
+```sql
+SELECT 1 FROM billingrelay.access
+WHERE external_customer_id = $1 AND access_key = 'pro' AND status = 'active';
+```
+
+**Delivery.** An outbox row only says a record changed. The worker sends that record's current state, and every waiting row for it up to that
+version is then delivered. It runs on its own queue, so a slow destination can't hold up payments, and it never talks to PayPal.
+
+| What's wrong | Examples | What happens |
+|---|---|---|
+| Down | Refused connection, timeout, restarting | Nothing is used up. Rows wait; the worker checks again after 5s, 10s, 20s, 40s, then each minute, with jitter |
+| Not ready | No schema, wrong version, permission denied, a role that could create things, no TLS | Same wait, with a code saying what to fix. The worker never fixes it itself |
+| One row refused | A value the table rejects | That row backs off: 5s, 30s, 2m, 10m, then hourly. After 8 attempts it's `failed`, and the others flow past it |
+
+Only codes are stored, never error text. A destination that isn't on this machine needs TLS with a verified certificate. With no destination set, changes
+wait in the outbox, and setting one later delivers them all. A new, empty destination after delivery isn't refilled; that's reconciliation (M14).
+
 ## Failure behaviour
 
 | Failure | Expected result |

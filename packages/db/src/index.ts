@@ -47,11 +47,9 @@ export { addReturnOrigin, isReturnOriginAllowed, listReturnOrigins, removeReturn
 export type { ProjectScope } from "./schema";
 export {
   getWorkerStatus,
-  pingDestination,
   pingSource,
   recordWorkerHeartbeat,
   type DbStatus,
-  type DestinationStatus,
   type WorkerStatus,
 } from "./health";
 export {
@@ -64,3 +62,21 @@ export {
   type PaypalConnectionRecord,
   type PaypalConnectionStatus,
 } from "./paypal-connections";
+export {
+  claimOutboxRow,
+  failAbandonedOutboxRows,
+  getCheckoutSync,
+  getDestinationState,
+  getSyncOverview,
+  loadProjection,
+  readSyncGate,
+  recordDelivered,
+  recordDestinationOk,
+  recordDestinationProblem,
+  releaseOutboxRow,
+  retryOutboxRow,
+  retrySyncNow,
+  startSyncStatus,
+  type ClaimedOutboxRow,
+  type SyncGate,
+} from "./sync";

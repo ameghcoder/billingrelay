@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { catalogQuoteRequestSchema, externalCustomerIdSchema, quoteSnapshotSchema } from "./quotes";
+import { CHECKOUT_SYNC_STATUSES } from "./sync";
 
 /** A checkout has its own hour, however close its quote was to expiring. Nothing is charged after it. */
 export const CHECKOUT_LIFETIME_SECONDS = 3600;
@@ -83,7 +84,7 @@ export const checkoutResponseSchema = z.object({
   expiresAt: z.string(),
   money: moneySchema,
   fulfillment: z.enum(FULFILLMENT_STATUSES),
-  sync: z.literal("not_configured"),
+  sync: z.enum(CHECKOUT_SYNC_STATUSES),
   nextAction: nextActionSchema,
   snapshot: quoteSnapshotSchema,
   paypal: z.object({ orderId: z.string().nullable(), captureId: z.string().nullable() }),

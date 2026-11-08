@@ -1,6 +1,7 @@
 import type { CatalogConfig } from "@billingrelay/core/catalog";
 import type { FulfillmentReason, FulfillmentStatus, MoneyReason, StoredMoneyStatus } from "@billingrelay/core/checkouts";
 import type { QuoteSnapshot } from "@billingrelay/core/quotes";
+import type { DestinationState, OutboxStatus, SyncOutcome } from "@billingrelay/core/sync";
 import { sql } from "drizzle-orm";
 import { boolean, check, index, integer, json, jsonb, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
@@ -359,6 +360,7 @@ export const accessGrant = pgTable(
 );
 
 // Only points at a record. Delivery reads its current state, so a retry sends the latest and no buyer details are copied.
+// The row is the delivery job, like `paypal_event`: `next_attempt_at` is both the retry time and the lease.
 export const outbox = pgTable(
   "outbox",
   {
@@ -370,10 +372,55 @@ export const outbox = pgTable(
     entityId: uuid("entity_id").notNull(),
     sourceVersion: integer("source_version").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    status: text("status").$type<OutboxStatus>().notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+    failureCode: text("failure_code"),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   },
   (table) => [
     unique("outbox_entity_version_unique").on(table.entityType, table.entityId, table.sourceVersion),
     check("outbox_entity_type_check", sql`${table.entityType} IN ('checkout', 'access_grant')`),
+    check("outbox_status_check", sql`${table.status} IN ('pending', 'delivered', 'failed')`),
+    index("outbox_due_idx").on(table.nextAttemptAt).where(sql`${table.status} = 'pending'`),
+  ],
+);
+
+// The retry history. A destination check that fails has no outbox row. Codes only: error text can quote row values.
+export const syncAttempt = pgTable(
+  "sync_attempt",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    outboxId: uuid("outbox_id").references(() => outbox.id),
+    outcome: text("outcome").$type<SyncOutcome>().notNull(),
+    code: text("code"),
+    durationMs: integer("duration_ms"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("sync_attempt_outcome_check", sql`${table.outcome} IN ('delivered', 'unchanged', 'refused', 'down', 'not_ready')`),
+    index("sync_attempt_created_idx").on(table.createdAt),
+    index("sync_attempt_outbox_idx").on(table.outboxId),
+  ],
+);
+
+// One row, written by the worker. The web app reads the destination's state here, so it never needs the destination's login.
+export const syncStatus = pgTable(
+  "sync_status",
+  {
+    id: integer("id").primaryKey().default(1),
+    state: text("state").$type<DestinationState>().notNull(),
+    code: text("code"),
+    downSince: timestamp("down_since", { withTimezone: true }),
+    // Checks in a row that failed, for the backoff. Reset by the first one that works.
+    failures: integer("failures").notNull().default(0),
+    nextTryAt: timestamp("next_try_at", { withTimezone: true }).notNull().defaultNow(),
+    lastDeliveredAt: timestamp("last_delivered_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("sync_status_single_row", sql`${table.id} = 1`),
+    check("sync_status_state_check", sql`${table.state} IN ('not_configured', 'checking', 'ok', 'down', 'not_ready')`),
   ],
 );
 

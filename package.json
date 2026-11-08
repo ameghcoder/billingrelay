@@ -13,12 +13,15 @@
     "db:generate": "pnpm --filter @billingrelay/db generate",
     "db:migrate": "pnpm --filter @billingrelay/db migrate",
     "db:seed": "pnpm --filter @billingrelay/db seed",
+    "destination:setup": "pnpm --filter @billingrelay/sync-postgres run setup",
     "test:invariants": "vitest run --dir tests/invariants --no-file-parallelism",
     "test:e2e": "vitest run --dir tests/e2e --no-file-parallelism",
     "test": "vitest run --dir packages"
   },
   "devDependencies": {
     "@types/node": "22.20.5",
+    "@types/pg": "8.23.1",
+    "pg": "8.23.1",
     "typescript": "5.9.3",
     "vitest": "5.1.0"
   }

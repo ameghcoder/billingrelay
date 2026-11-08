@@ -1,7 +1,6 @@
-import { getDestinationPool, getSourcePool } from "./client";
+import { getSourcePool } from "./client";
 
 export type DbStatus = "ok" | "down";
-export type DestinationStatus = DbStatus | "not_configured";
 export type WorkerStatus = "ok" | "stale";
 
 const WORKER_STALE_AFTER_SECONDS = 90;
@@ -9,17 +8,6 @@ const WORKER_STALE_AFTER_SECONDS = 90;
 export async function pingSource(): Promise<DbStatus> {
   try {
     await getSourcePool().query("SELECT 1");
-    return "ok";
-  } catch {
-    return "down";
-  }
-}
-
-export async function pingDestination(): Promise<DestinationStatus> {
-  const pool = getDestinationPool();
-  if (!pool) return "not_configured";
-  try {
-    await pool.query("SELECT 1");
     return "ok";
   } catch {
     return "down";

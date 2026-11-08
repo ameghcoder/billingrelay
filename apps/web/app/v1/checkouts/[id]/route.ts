@@ -10,5 +10,5 @@ export const GET = withApiKey<Context>(async ({ apiKey, context }) => {
   const { id } = await context.params;
   const checkout = isUuid(id) ? await getCheckout(apiKey, id) : null;
   if (!checkout) return apiError(404, "not_found", "No such checkout");
-  return jsonResponse(toCheckoutResponse(checkout));
+  return jsonResponse(await toCheckoutResponse(checkout));
 });

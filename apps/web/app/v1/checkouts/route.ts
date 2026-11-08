@@ -18,11 +18,11 @@ import { toCheckoutResponse } from "@/lib/checkout";
 import { publicOrigin } from "@/lib/paypal-connection";
 import { bodyTooLarge, readJsonBody, withApiKey } from "@/lib/v1-routes";
 
-function replay(stored: CheckoutRecord & { payloadHash: string }, payloadHash: string) {
+async function replay(stored: CheckoutRecord & { payloadHash: string }, payloadHash: string) {
   if (stored.payloadHash !== payloadHash) {
     return apiError(409, "idempotency_conflict", "This Idempotency-Key was used with a different request. Nothing was changed.");
   }
-  return jsonResponse(toCheckoutResponse(stored));
+  return jsonResponse(await toCheckoutResponse(stored));
 }
 
 const quoteUsed = (checkoutId: string) =>
@@ -86,7 +86,7 @@ export const POST = withApiKey(async ({ request, apiKey }) => {
     snapshot: priced.snapshot,
     lifetimeSeconds: CHECKOUT_LIFETIME_SECONDS,
   });
-  if (createdId) return jsonResponse(toCheckoutResponse((await getCheckout(scope, createdId))!), 201);
+  if (createdId) return jsonResponse(await toCheckoutResponse((await getCheckout(scope, createdId))!), 201);
 
   // Another request got in after the lookups above, with this key or for this quote.
   const winner = await findCheckoutByKey(scope, idempotencyKey.data);

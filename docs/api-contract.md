@@ -104,7 +104,7 @@ A checkout lasts 1 hour from creation, however close its quote was to expiring. 
   "expiresAt": "2026-11-06T10:30:00.000Z",
   "money": "pending | approved | captured | failed | expired | unresolved | refund_review",
   "fulfillment": "pending | applied | restricted | failed",
-  "sync": "not_configured",
+  "sync": "not_configured | pending | delivered | failed",
   "nextAction": "redirect | wait | none | contact_support",
   "snapshot": {},
   "paypal": { "orderId": null, "captureId": null }
@@ -128,8 +128,15 @@ A checkout lasts 1 hour from creation, however close its quote was to expiring. 
 | `restricted` | A refund stopped them. Any grant from this payment is restricted |
 | `failed` | Reserved. Nothing sets it yet: a failure to apply is retried and stays `pending` |
 
-Money and fulfillment are separate on purpose: `captured` with `pending` means the money arrived and the benefits are still on their way.
-`sync` becomes `not_configured | pending | delivered | failed` in M07.
+| `sync` | Meaning |
+|---|---|
+| `not_configured` | No destination database is set up. The API is the only way to read billing state |
+| `pending` | Not in the merchant's database yet: waiting, retrying, or the destination is down. Also a checkout nothing has happened to, which is never copied |
+| `delivered` | The merchant's database has every change to this checkout and its access |
+| `failed` | The destination refused one of its changes 8 times. It stays visible until someone retries it |
+
+Money, fulfillment and sync are separate on purpose: `captured` with `pending` means the money arrived and the benefits are still on their way.
+Sync never affects money: a destination that's down only delays the copy.
 
 ## Hosted checkout (browser, no credentials)
 
@@ -157,8 +164,9 @@ code as `/confirm`. Stored events end as `processed`, `ignored` (nothing of ours
 
 ## Health (public)
 
-`GET /api/health` returns `{ source, destination, worker }` and nothing else: `ok` or `down` for each database (`not_configured`
-when no destination is set), and `ok` or `stale` for the worker. It returns `200` when healthy, `503` otherwise.
+`GET /api/health` returns `{ source, destination, worker }` and nothing else: `ok` or `down` for the source, `ok` or `stale` for the worker,
+and the destination's state as the worker last saw it (`not_configured`, `checking`, `ok`, `down` or `not_ready`; `unknown` while the source is down). It returns `200` when the
+source and worker are healthy, `503` otherwise. The destination never makes it `503`: a merchant's database being down mustn't get our app restarted.
 
 ## Operator (Better Auth session)
 
@@ -188,6 +196,7 @@ used as an environment: `live` returns `422 live_disabled` before any PayPal cal
 | `POST /admin/config/drafts/:id/validate` | Schema and capability validation, plus a fixture preview labelled as simulation. |
 | `POST /admin/config/drafts/:id/approve` | Approval bound to project, environment and exact draft version. |
 | `POST /admin/config/drafts/:id/apply` | Create PayPal products/plans idempotently, then activate. Resumes after partial failure. |
+| `GET /admin/sync` | The destination's state and a code for what's wrong, since when, pending and failed counts, lag (age in seconds of the oldest change not yet delivered), the last delivery and the last 20 attempts. Read from our own database. |
 | `POST /admin/sync/deliveries/:id/retry` | Retry only a known, eligible failed delivery. Audited. |
 | `POST /admin/investigations` | Scoped evidence plus a typed proposal. No mutations. |
 | `POST /admin/actions/:id/approve` | Approve a proposed repair. |

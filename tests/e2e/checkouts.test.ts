@@ -219,10 +219,11 @@ describe.runIf(process.env.E2E_WRITE_DB === "1" && process.env.E2E_PAYPAL === "1
         externalCustomerId: CUSTOMER,
         money: "pending",
         fulfillment: "pending",
-        sync: "not_configured",
         nextAction: "redirect",
         paypal: { orderId: null, captureId: null },
       });
+      // Nothing has happened to it yet, so it's in no destination; which word depends on whether one is set up.
+      expect(["not_configured", "pending"]).toContain(body.sync);
       expect(body.snapshot).toMatchObject({ source: "catalog", unitAmount: 2900, amount: 2900, currency: "USD", metadata: { note: METADATA_VALUE } });
       expect(new URL(body.checkoutUrl).pathname).toBe(`/checkout/${body.id}`);
       expect(new URL(body.checkoutUrl).origin).toBe(new URL(process.env.PUBLIC_BASE_URL!).origin);

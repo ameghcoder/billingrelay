@@ -35,3 +35,9 @@ Status: accepted, 2026-10-28 to 2026-11-05.
 23. **Money and benefits commit separately.** A merchant polling may see `captured` with `fulfillment: pending` for a few seconds, but a failure applying benefits can't hide that money arrived.
 24. **`next_attempt_at` is both the retry time and the lease.** Claiming pushes it forward, so a killed worker's event comes back by itself, with no second column to keep in step.
 25. **A refund goes to review whatever its size.** Partial refunds need a policy nobody has decided, and restricting access is the safe direction.
+26. **One destination per deployment, from an env var, held only by the worker.** A form that accepts database URLs is an SSRF risk, and the
+    web app never needs the merchant's login. A per-project setting can come later, because every row carries `project_id`.
+27. **Delivery sends a record's current state, and the destination keeps only a newer version.** Repeats, late jobs, two workers and a lost
+    acknowledgement all need nothing more than that one `WHERE`.
+28. **A destination outage uses up no attempts.** Only a row the destination refuses counts towards `failed`, so a long outage still catches up by itself.
+29. **The worker refuses a destination role that could create objects.** A wrong URL can't let a bug damage the merchant's database.

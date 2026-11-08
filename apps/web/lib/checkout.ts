@@ -1,12 +1,13 @@
 import { checkoutResponseSchema, isSettled, nextActionFor, showMoneyStatus, type CheckoutResponse, type PublicCheckout } from "@billingrelay/core/checkouts";
-import type { CheckoutRecord } from "@billingrelay/db";
+import { getCheckoutSync, type CheckoutRecord } from "@billingrelay/db";
 import { publicOrigin } from "./paypal-connection";
 
 export const checkoutUrlFor = (id: string) => `${publicOrigin() ?? ""}/checkout/${id}`;
 
-/** What the merchant's backend sees. `sync` stays fixed until M07 can change it. */
-export function toCheckoutResponse(checkout: CheckoutRecord): CheckoutResponse {
+/** What the merchant's backend sees. `sync` comes from the outbox, so it never needs the destination itself. */
+export async function toCheckoutResponse(checkout: CheckoutRecord): Promise<CheckoutResponse> {
   const money = showMoneyStatus(checkout);
+  const sync = await getCheckoutSync(checkout.id);
   return checkoutResponseSchema.parse({
     id: checkout.id,
     externalCustomerId: checkout.externalCustomerId,
@@ -14,7 +15,7 @@ export function toCheckoutResponse(checkout: CheckoutRecord): CheckoutResponse {
     expiresAt: checkout.expiresAt.toISOString(),
     money,
     fulfillment: checkout.fulfillmentStatus,
-    sync: "not_configured",
+    sync,
     nextAction: nextActionFor(money),
     snapshot: checkout.snapshot,
     paypal: { orderId: checkout.paypalOrderId, captureId: checkout.paypalCaptureId },

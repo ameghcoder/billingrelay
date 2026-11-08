@@ -13,6 +13,7 @@
     "@billingrelay/billing": "workspace:*",
     "@billingrelay/db": "workspace:*",
     "@billingrelay/provider-paypal": "workspace:*",
+    "@billingrelay/sync-postgres": "workspace:*",
     "pg-boss": "12.38.0"
   },
   "devDependencies": {

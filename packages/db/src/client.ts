@@ -33,12 +33,6 @@ export function getSourcePool(): pg.Pool {
   return getPool("source", requireEnv("DATABASE_URL"));
 }
 
-/** Null when no destination is configured: sync is optional. */
-export function getDestinationPool(): pg.Pool | null {
-  const url = process.env.DESTINATION_DATABASE_URL;
-  return url ? getPool("destination", url) : null;
-}
-
 export function getDb() {
   return drizzle(getSourcePool(), { schema });
 }

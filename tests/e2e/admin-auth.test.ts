@@ -2,6 +2,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
+import { syncStatusResponseSchema } from "../../packages/core/src/sync";
 
 if (existsSync(".env.local")) process.loadEnvFile(".env.local");
 
@@ -161,6 +162,9 @@ describe("sign-in", () => {
     const me = await request("/admin/me", { headers });
     expect(me.status).toBe(200);
     expect((await me.json()).operator.email).toBe(email.toLowerCase());
+    const sync = await request("/admin/sync", { headers });
+    expect(sync.status).toBe(200);
+    expect(syncStatusResponseSchema.safeParse(await sync.json()).success).toBe(true);
 
     const out = await request("/api/auth/sign-out", {
       method: "POST",

@@ -43,6 +43,13 @@
       "when": 1793951203949,
       "tag": "0005_talented_reavers",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794065788346,
+      "tag": "0006_mysterious_mentallo",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,24 @@
+{
+  "name": "@billingrelay/sync-postgres",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "setup": "tsx --env-file-if-exists=../../.env.local src/setup.ts",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@billingrelay/core": "workspace:*",
+    "pg": "8.23.1",
+    "pg-connection-string": "2.14.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/pg": "8.23.1",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}

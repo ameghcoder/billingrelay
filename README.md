@@ -100,6 +100,7 @@ Only capabilities with a recorded proof are marked verified.
 | Credit ledger | ⬜ not built | A paid credit pack stays `fulfillment: pending` until it exists |
 | Credit packs and atomic consumption | ⬜ not built | |
 | One-way sync to an independent Postgres | ✅ verified locally | A separate Postgres server stopped during a real purchase converged with one row; a worker killed after the destination committed, two workers, a hanging destination, a refused row and a restricted role, `tests/invariants/sync.test.ts`. Not yet hosted, and no TLS destination yet |
+| Billing and sync dashboard, customer trace | ✅ verified locally | `tests/e2e/dashboard.test.ts` against a production build with planted rows: "Paid, not synced" in one click, a trace down to the failed attempt's code, no payload or buyer details in any response. Read-only |
 | Rate limits and PayPal token reuse | ✅ verified locally | Floods of forged events, wrong keys and sign-ins stop at their limits without blocking other addresses; a real purchase used one token. Per process, and Render's client IP header not yet confirmed |
 | AI billing setup (reviewed draft) | ⬜ not built | |
 | AI investigation and safe retry | ⬜ not built | |

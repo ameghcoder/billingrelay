@@ -12,6 +12,9 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           <Link href="/admin" className="font-semibold">
             BillingRelay
           </Link>
+          <Link href="/admin/billing" className="text-sm text-muted-foreground hover:text-foreground">
+            Billing
+          </Link>
           <Link href="/admin/paypal" className="text-sm text-muted-foreground hover:text-foreground">
             PayPal
           </Link>

@@ -34,6 +34,7 @@ export {
   type ActiveApiKey,
   type ApiKeyRecord,
 } from "./api-keys";
+export * from "./dashboard";
 export { applyCheckoutBenefits, restrictRefundedCheckout } from "./fulfillment";
 export {
   claimPaypalEvent,

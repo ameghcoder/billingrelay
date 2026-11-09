@@ -230,6 +230,11 @@ used as an environment: `live` returns `422 live_disabled` before any PayPal cal
 | `POST /admin/config/drafts/:id/approve` | Approval bound to project, environment and exact draft version. |
 | `POST /admin/config/drafts/:id/apply` | Create PayPal products/plans idempotently, then activate. Resumes after partial failure. |
 | `GET /admin/sync` | The destination's state and a code for what's wrong, since when, pending and failed counts, lag (age in seconds of the oldest change not yet delivered), the last delivery and the last 20 attempts. Read from our own database. |
+| `GET /admin/billing/attention` | Counts and codes for what needs a person: failed events, payments approved or unresolved for over 24 hours, failed deliveries, the destination `down` or `not_ready`, and a webhook that isn't set up. Warnings only; nothing here blocks a checkout. |
+| `GET /admin/billing/checkouts` | Checkouts with money, fulfillment and sync kept separate. Filters `money`, `fulfillment`, `sync` (`not_delivered` is every state but `delivered`), paged by `limit` (1 to 100, default 50) and `offset`. `totals` has one entry per currency, over every match; currencies are never added together. |
+| `GET /admin/billing/events` | Stored PayPal events: type, status, attempts, failure code, received time and the checkout each is about. Filters `status` and `eventType`, paged the same way. Never the payload, which names the buyer. |
+| `GET /admin/billing/deliveries` | Outbox rows: record, status, attempts, failure code, lag, and the last attempt's outcome, code and duration. Filters `status` and `entityType`, paged the same way. |
+| `GET /admin/customers/:externalCustomerId/trace` | One customer's latest 50 checkouts, each followed in time order by its events, billing effects, access grants, outbox rows and every sync attempt with its code and duration. `404` for an unknown customer. |
 | `POST /admin/sync/deliveries/:id/retry` | Retry only a known, eligible failed delivery. Audited. |
 | `POST /admin/investigations` | Scoped evidence plus a typed proposal. No mutations. |
 | `POST /admin/actions/:id/approve` | Approve a proposed repair. |

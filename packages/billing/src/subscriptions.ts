@@ -89,6 +89,11 @@ export async function syncSubscription(subscription: SubscriptionRecord): Promis
     return { unknown: false };
   } catch (error) {
     if (!(error instanceof PaypalError)) throw error;
+    // PayPal deletes a subscription nobody approved once its link expires. Nothing was charged; stop asking about it.
+    if (error.code === "RESOURCE_NOT_FOUND" && subscription.status === "pending") {
+      await recordSubscriptionState(subscription.id, { status: "expired", approved: false, nextBillingTime: null, mismatch: null, payments: [], nextCheckAt: null });
+      return { unknown: false };
+    }
     console.warn(`PayPal subscription read failed: ${error.message}`);
     return { unknown: true };
   }

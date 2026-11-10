@@ -244,7 +244,7 @@ export async function recordSubscriptionState(id: string, read: SubscriptionRead
     const nextBillingTime = read.nextBillingTime ?? date(locked.next_billing_time);
     // Approved but no payment recorded yet: PayPal is still taking the first one, or its list hasn't caught up. Look again soon,
     // not a month from now.
-    const awaitingFirstPayment = read.approved && status !== "pending" && paidThrough === null && reviewReason === null;
+    const awaitingFirstPayment = read.approved && status !== "pending" && status !== "expired" && paidThrough === null && reviewReason === null;
     const nextCheckAt =
       status === "pending"
         ? nextPendingCheck(new Date(locked.checkout_created_at))

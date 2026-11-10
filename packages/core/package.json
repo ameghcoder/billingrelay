@@ -10,6 +10,7 @@
     "./checkouts": "./src/checkouts.ts",
     "./credits": "./src/credits.ts",
     "./dashboard": "./src/dashboard.ts",
+    "./flow": "./src/flow.ts",
     "./idempotency": "./src/idempotency.ts",
     "./paypal-connection": "./src/paypal-connection.ts",
     "./quotes": "./src/quotes.ts",

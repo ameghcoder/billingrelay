@@ -36,6 +36,14 @@ AI must not invent credentials, guess taxes, silently change prices or claim an 
 - Every AI run, approval and activation is in `audit_event`, with IDs and hashes, never the prompt's text.
 - No key, or the model down: the route says so and the catalog editor works as before.
 
+### As built (M18)
+
+- `/admin/flow?version=N`: generated from that stored version (`buildFlow` in `packages/core/src/flow.ts`), one lane per product:
+  checkout → PayPal (order and capture, or a monthly plan) → verified payment → effects → outbox → your database (or the API).
+- Each step shows its settings and the last week's counts from our own tables (paid, unresolved, refunded, applied, delivered, failed).
+- Four settings can be edited: product name, price, credits and access key. An edit saves a new version from the latest one, through the same
+  rules as the editor and the AI, so the history stays one list and the new version needs its own approval. No other nodes, links or code.
+
 ## Supporting: billing investigation agent
 
 > "The customer paid, but Pro access is still missing."

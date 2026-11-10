@@ -1,4 +1,5 @@
 import type { FulfillmentStatus, MoneyReason, MoneyStatus } from "@billingrelay/core/checkouts";
+import type { ProductActivity } from "@billingrelay/core/flow";
 import { accessUntil, type SubscriptionReviewReason, type SubscriptionStatus } from "@billingrelay/core/subscriptions";
 import type { CheckoutSyncStatus, DestinationState, OutboxStatus, SyncEntityType, SyncOutcome } from "@billingrelay/core/sync";
 import { sql, type SQL } from "drizzle-orm";
@@ -652,4 +653,32 @@ export async function listDashboardCredits(scope: ProjectScope, page: DashboardP
     })),
     total: counted[0]!.total,
   };
+}
+
+/** The last week per product, for the flow canvas: how far checkouts got, and whether their copies arrived. */
+export async function getProductActivity(scope: ProjectScope, days = 7): Promise<Record<string, ProductActivity>> {
+  const { rows } = await getDb().execute<{ ref: string; started: number; paid: number; unresolved: number; refunded: number; applied: number; delivered: number; failed: number; active: number }>(sql`
+    SELECT r.ref, r.started, r.paid, r.unresolved, r.refunded, r.applied, r.delivered, r.failed,
+           (SELECT count(*)::int FROM subscription s WHERE s.project_id = ${scope.projectId} AND s.environment = ${scope.environment}
+              AND s.product_ref = r.ref AND s.status = 'active') AS active
+    FROM (
+      SELECT c.snapshot->'product'->>'ref' AS ref,
+             count(*)::int AS started,
+             count(*) FILTER (WHERE c.money_status = 'captured')::int AS paid,
+             count(*) FILTER (WHERE c.money_status = 'unresolved')::int AS unresolved,
+             count(*) FILTER (WHERE c.money_status = 'refund_review')::int AS refunded,
+             count(*) FILTER (WHERE c.fulfillment_status = 'applied')::int AS applied,
+             count(*) FILTER (WHERE EXISTS (SELECT 1 FROM outbox o WHERE o.entity_type = 'checkout' AND o.entity_id = c.id)
+                              AND NOT EXISTS (SELECT 1 FROM outbox o WHERE o.entity_type = 'checkout' AND o.entity_id = c.id AND o.status <> 'delivered'))::int AS delivered,
+             count(*) FILTER (WHERE EXISTS (SELECT 1 FROM outbox o WHERE o.entity_id = c.id AND o.status = 'failed'))::int AS failed
+      FROM checkout c
+      WHERE c.project_id = ${scope.projectId} AND c.environment = ${scope.environment} AND c.created_at > now() - make_interval(days => ${days})
+      GROUP BY 1
+    ) r`);
+  return Object.fromEntries(
+    rows.map((row) => [
+      row.ref,
+      { started: row.started, paid: row.paid, unresolved: row.unresolved, refunded: row.refunded, applied: row.applied, delivered: row.delivered, failedDeliveries: row.failed, activeSubscriptions: row.active },
+    ]),
+  );
 }

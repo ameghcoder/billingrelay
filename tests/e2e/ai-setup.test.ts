@@ -70,6 +70,18 @@ describe.runIf(process.env.E2E_WRITE_DB === "1")("AI setup", { timeout: 180_000 
       expect((await refused.json()).error.code).toBe("approval_required");
       expect((await admin(`${DRAFTS}/${id}/approve`, { method: "POST" })).status).toBe(200);
       expect((await admin(`${DRAFTS}/${id}/activate`, { method: "POST" })).status).toBe(200);
+
+      // M18: the flow drawn from this AI draft, and an edit on it.
+      const { version } = (await (await admin(`${DRAFTS}/${id}`)).json()) as { version: number };
+      const page = await (await admin(`/admin/flow?version=${version}`)).text();
+      expect(page).toContain("PayPal monthly plan");
+      expect(page).toContain("PayPal order, then capture");
+      const pack = (body.config.products as { ref: string; kind: string; variants: { ref: string }[] }[]).find((product) => product.kind === "credit_pack")!;
+      const edited = await admin(`/admin/flow/${id}/edit`, { method: "POST", body: JSON.stringify({ type: "credits", productRef: pack.ref, variantRef: pack.variants[0]!.ref, amount: 1200 }) });
+      expect(edited.status).toBe(201);
+      const after = (await (await admin(DRAFTS)).json()).versions as { id: string; version: number; approved: boolean; isLive: boolean }[];
+      expect(after[0]).toMatchObject({ version: version + 1, approved: false, isLive: false });
+      expect(after.find((item) => item.id === id)).toMatchObject({ approved: true, isLive: true });
     });
 
     it("asks instead of inventing a price", async () => {

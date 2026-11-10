@@ -17,11 +17,17 @@ type StageNode = Node<{ node: FlowNode }, "stage">;
 type VersionInfo = { id: string; version: number; isLive: boolean; approved: boolean; isLatest: boolean };
 
 const TONES = { good: "default", warn: "secondary", bad: "destructive" } as const;
+const NODE_WIDTH = 224;
+const NODE_HEIGHT = 120;
 
 function StageNodeView({ data, selected }: NodeProps<StageNode>) {
   const { node } = data;
   return (
-    <div className={`w-56 rounded-md border bg-card p-3 text-xs shadow-sm ${selected ? "ring-2 ring-primary" : ""}`} data-testid={`flow-node-${node.id}`}>
+    <div
+      style={{ width: NODE_WIDTH, height: NODE_HEIGHT }}
+      className={`overflow-hidden rounded-md border bg-card p-3 text-xs shadow-sm ${selected ? "ring-2 ring-primary" : ""}`}
+      data-testid={`flow-node-${node.id}`}
+    >
       <Handle type="target" position={Position.Left} />
       <p className="font-medium">{node.title}</p>
       {node.settings.slice(0, 2).map((setting) => (
@@ -99,7 +105,18 @@ function SettingRow({ setting, version, editable }: { setting: FlowSetting; vers
 export function FlowCanvas({ flow, version, versions }: { flow: Flow; version: VersionInfo; versions: { version: number; isLive: boolean }[] }) {
   const [selectedId, setSelectedId] = useState<string | null>(flow.nodes[0]?.id ?? null);
   const nodes = useMemo<StageNode[]>(
-    () => flow.nodes.map((node) => ({ id: node.id, type: "stage", position: node.position, data: { node }, selected: node.id === selectedId, draggable: false })),
+    // Sizes given up front, so fitting the view counts every column before the nodes are measured.
+    () =>
+      flow.nodes.map((node) => ({
+        id: node.id,
+        type: "stage",
+        position: node.position,
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        data: { node },
+        selected: node.id === selectedId,
+        draggable: false,
+      })),
     [flow, selectedId],
   );
   const edges = useMemo(() => flow.edges.map((edge) => ({ ...edge, animated: false })), [flow]);
@@ -126,7 +143,7 @@ export function FlowCanvas({ flow, version, versions }: { flow: Flow; version: V
       </div>
       <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
         <div className="h-[32rem] rounded-md border" data-testid="flow-canvas">
-          <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodeClick={(_, node) => setSelectedId(node.id)} fitView nodesConnectable={false} proOptions={{ hideAttribution: true }}>
+          <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodeClick={(_, node) => setSelectedId(node.id)} fitView fitViewOptions={{ padding: 0.05 }} minZoom={0.2} nodesConnectable={false} proOptions={{ hideAttribution: true }}>
             <Background />
             <Controls showInteractive={false} />
           </ReactFlow>

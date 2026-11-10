@@ -164,7 +164,7 @@ export function AiSetup({ available, latestVersion }: { available: boolean; late
       {result?.outcome === "no_proposal" && (
         <Card>
           <CardHeader>
-            <CardTitle>No valid catalog yet</CardTitle>
+            <CardTitle>No new catalog</CardTitle>
             <CardDescription>{result.note || "The AI couldn't make a catalog that passes every rule. Add detail and try again."}</CardDescription>
           </CardHeader>
         </Card>

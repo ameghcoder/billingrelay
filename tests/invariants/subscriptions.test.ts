@@ -193,6 +193,10 @@ describe.runIf(process.env.E2E_WRITE_DB === "1")("subscription invariants", { ti
     await recordSubscriptionState(subscription.id, read({ status: "pending", approved: true }));
     const checkout = (await findCheckout(checkoutId))!;
     expect(showMoneyStatus(checkout)).toBe("approved");
+    // Active at PayPal with no payment listed yet: the worker looks again in minutes, not at next month's billing time.
+    await recordSubscriptionState(subscription.id, read({ status: "active", approved: true, nextBillingTime: new Date(Date.now() + 30 * 24 * HOUR), nextCheckAt: new Date(Date.now() + 30 * 24 * HOUR) }));
+    const { soon } = await one<{ soon: boolean }>("SELECT next_check_at < now() + interval '3 minutes' AS soon FROM subscription WHERE id = $1", [subscription.id]);
+    expect(soon).toBe(true);
   });
 
   it("10 checkouts at once for one customer's subscription: one starts, the rest are told it exists", async () => {

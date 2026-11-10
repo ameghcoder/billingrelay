@@ -64,6 +64,7 @@ export {
   findSubscriptionByCheckout,
   findSubscriptionForEvent,
   getSubscription,
+  isSaleRecorded,
   markCancelRequested,
   recordSubscriptionState,
   savePaypalPlan,

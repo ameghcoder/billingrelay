@@ -507,8 +507,10 @@ export function readEvent(eventType: string, payload: unknown): PaypalEventFacts
   // A subscription event's resource is the subscription. A sale names it in `billing_agreement_id` (the older payload shape).
   if (signal === "subscription_changed") {
     const subscriptionId = eventType === "PAYMENT.SALE.COMPLETED" ? (resource.billing_agreement_id ?? null) : (resource.id ?? null);
-    const checkoutId = eventType === "PAYMENT.SALE.COMPLETED" ? null : (resource.custom_id ?? null);
-    return { signal, checkoutId, orderId: null, captureId: null, subscriptionId };
+    const isSale = eventType === "PAYMENT.SALE.COMPLETED";
+    const checkoutId = isSale ? null : (resource.custom_id ?? null);
+    // A sale's own ID, so the caller can tell whether PayPal's transaction list shows it yet.
+    return { signal, checkoutId, orderId: null, captureId: isSale ? (resource.id ?? null) : null, subscriptionId };
   }
 
   // A refund names its capture only through its "up" link.

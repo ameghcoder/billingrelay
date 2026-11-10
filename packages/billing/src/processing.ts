@@ -4,6 +4,7 @@ import {
   findCheckout,
   findCheckoutForEvent,
   findSubscriptionForEvent,
+  isSaleRecorded,
   restrictRefundedCheckout,
   type CheckoutRecord,
   type ClaimedPaypalEvent,
@@ -41,7 +42,10 @@ async function handleSubscriptionEvent(scope: ClaimedPaypalEvent["scope"], facts
     return ours ? retry("subscription_not_recorded") : IGNORED;
   }
   const { unknown } = await syncSubscription(subscription);
-  return unknown ? retry("paypal_unavailable") : PROCESSED;
+  if (unknown) return retry("paypal_unavailable");
+  // PayPal's transaction list can lag its own sale event. Until the sale is stored, the event isn't done.
+  if (facts.captureId && !(await isSaleRecorded(facts.captureId))) return retry("sale_not_listed_yet");
+  return PROCESSED;
 }
 
 async function handleRefund(checkout: CheckoutRecord, captureId: string | null): Promise<EventOutcome> {

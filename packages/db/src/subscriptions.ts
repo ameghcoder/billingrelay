@@ -12,6 +12,7 @@ type Runner = Pick<Tx, "execute">;
 // A buyer who hasn't approved yet: look again this often, while PayPal's approval link can still be used.
 const PENDING_CHECK_SECONDS = 15 * 60;
 const PENDING_LOOK_HOURS = 3;
+const FIRST_PAYMENT_CHECK_SECONDS = 120;
 // How long a claimed subscription is left alone while one worker asks PayPal about it.
 const LEASE_SECONDS = 120;
 
@@ -130,6 +131,12 @@ export async function saveSubscription(values: { checkoutId: string; paypalPlanI
   return (await findSubscriptionByCheckout(values.checkoutId))!;
 }
 
+/** Whether a sale an event named has been stored: PayPal's transaction list can lag behind its own sale event. */
+export async function isSaleRecorded(paypalSaleId: string): Promise<boolean> {
+  const { rows } = await getDb().execute(sql`SELECT 1 FROM subscription_payment WHERE paypal_sale_id = ${paypalSaleId}`);
+  return rows.length > 0;
+}
+
 export async function markCancelRequested(id: string): Promise<void> {
   await getDb().execute(sql`UPDATE subscription SET cancel_requested_at = COALESCE(cancel_requested_at, now()), updated_at = now() WHERE id = ${id}`);
 }
@@ -235,7 +242,15 @@ export async function recordSubscriptionState(id: string, read: SubscriptionRead
 
     const status = read.status;
     const nextBillingTime = read.nextBillingTime ?? date(locked.next_billing_time);
-    const nextCheckAt = status === "pending" ? nextPendingCheck(new Date(locked.checkout_created_at)) : read.nextCheckAt;
+    // Approved but no payment recorded yet: PayPal is still taking the first one, or its list hasn't caught up. Look again soon,
+    // not a month from now.
+    const awaitingFirstPayment = read.approved && status !== "pending" && paidThrough === null && reviewReason === null;
+    const nextCheckAt =
+      status === "pending"
+        ? nextPendingCheck(new Date(locked.checkout_created_at))
+        : awaitingFirstPayment
+          ? new Date(Date.now() + FIRST_PAYMENT_CHECK_SECONDS * 1000)
+          : read.nextCheckAt;
 
     const paidThroughChanged = (paidThrough?.getTime() ?? null) !== (locked.paid_through ? new Date(locked.paid_through).getTime() : null);
     const changed =

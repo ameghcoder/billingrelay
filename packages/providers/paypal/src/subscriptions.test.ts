@@ -48,7 +48,12 @@ describe("subscription events", () => {
   });
 
   it("a sale names its subscription only through billing_agreement_id", () => {
-    expect(readEvent("PAYMENT.SALE.COMPLETED", REAL.sale)).toMatchObject({ signal: "subscription_changed", subscriptionId: "I-937ASKVASBHS", checkoutId: null });
+    expect(readEvent("PAYMENT.SALE.COMPLETED", REAL.sale)).toMatchObject({
+      signal: "subscription_changed",
+      subscriptionId: "I-937ASKVASBHS",
+      checkoutId: null,
+      captureId: "0LV9673837477184L",
+    });
   });
 
   it.each(["BILLING.SUBSCRIPTION.SUSPENDED", "BILLING.SUBSCRIPTION.PAYMENT.FAILED"])("%s is a subscription change", (type) => {

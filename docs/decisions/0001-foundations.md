@@ -62,3 +62,5 @@ Status: accepted, 2026-10-28 to 2026-11-05.
 38. **Credits are lots plus an append-only ledger, locked per customer.** A lot per payment makes "one grant per payment" a unique key, and
     knowing which lot a debit took from lets a compensation give back exactly that and a refund restrict exactly that pack.
 39. **Spending checks end times itself; the expiry sweep only records.** A late worker can never let a lapsed month's credits be spent.
+40. **Private-network destinations may skip TLS, only on the operator's explicit `DESTINATION_PRIVATE_NETWORK=1`, and only for private hosts.**
+    The hosted demo's merchant database and a Docker self-host live on private networks whose internal names have no public certificate.

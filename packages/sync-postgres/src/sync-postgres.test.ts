@@ -73,6 +73,19 @@ describe("destinationUrlProblem", () => {
     expect(destinationUrlProblem("postgres://u:p@db.example.com/merchant?ssl=true")).toBeNull();
   });
 
+  it("allows a private host without TLS only when the operator says it's a private network", () => {
+    for (const host of ["dpg-abc123-a", "dest-db", "10.0.3.4", "172.20.0.5", "192.168.1.9", "[fd00::5]"]) {
+      expect(destinationUrlProblem(`postgres://u:p@${host}/merchant`)).toBe("tls_required");
+      expect(destinationUrlProblem(`postgres://u:p@${host}/merchant`, { privateNetwork: true })).toBeNull();
+    }
+  });
+
+  it("never allows a public host without TLS, private network or not", () => {
+    for (const host of ["db.example.com", "dpg-abc.oregon-postgres.render.com", "8.8.8.8", "172.32.0.1", "[2001:db8::1]"]) {
+      expect(destinationUrlProblem(`postgres://u:p@${host}/merchant`, { privateNetwork: true })).toBe("tls_required");
+    }
+  });
+
   it("refuses what it can't read", () => {
     expect(destinationUrlProblem("not a url")).toBe("url_invalid");
     expect(destinationUrlProblem("postgres://u:p@db.example.com/m?sslmode=verify-full&sslrootcert=/no/such/file")).toBe("url_invalid");

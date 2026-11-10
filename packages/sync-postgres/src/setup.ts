@@ -23,7 +23,7 @@ if (migrations.at(-1)?.version !== SCHEMA_VERSION) fail("The migrations folder d
 
 const ownerUrl = process.env.DESTINATION_OWNER_URL;
 if (!ownerUrl) fail("DESTINATION_OWNER_URL is not set");
-const urlProblem = destinationUrlProblem(ownerUrl);
+const urlProblem = destinationUrlProblem(ownerUrl, { privateNetwork: process.env.DESTINATION_PRIVATE_NETWORK === "1" });
 if (urlProblem) fail(`DESTINATION_OWNER_URL refused: ${urlProblem}`);
 
 const client = new pg.Client({ connectionString: ownerUrl, connectionTimeoutMillis: 5_000 });

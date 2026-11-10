@@ -1,15 +1,17 @@
 # Deploy to Render
 
-`render.yaml` is a Render Blueprint: the web app, the worker and BillingRelay's own Postgres. The merchant's destination
-database isn't in it. Here that's a Supabase project, which only the worker reaches.
+`render.yaml` is a Render Blueprint: the web app, the worker, BillingRelay's own Postgres, and a second Postgres that stands in for a
+merchant's database in the demo. A real merchant would point the worker at their own database instead; see "Supabase as the merchant
+database" below.
 
 ```
 GitHub ──▶ Render Blueprint
-            ├─ billingrelay-web     Next.js, public https; PayPal posts webhooks here
-            ├─ billingrelay-worker  processing and sync; no public address
-            └─ billingrelay-source  Render Postgres, reachable only inside Render
-                                          │
-            worker only, verify-full TLS ─┴──▶ Supabase (destination), role billingrelay_sync
+            ├─ billingrelay-web       Next.js, public https; PayPal posts webhooks here
+            ├─ billingrelay-worker    processing and sync; no public address
+            ├─ billingrelay-source    Render Postgres, BillingRelay's own data, reachable only inside Render
+            └─ billingrelay-merchant  Render Postgres, the demo merchant's database, reachable only inside Render
+                                          ▲
+                   worker only, as role billingrelay_sync, over Render's private network
 ```
 
 ## What the Blueprint sets
@@ -21,15 +23,16 @@ GitHub ──▶ Render Blueprint
 | web | `BETTER_AUTH_URL`, `PUBLIC_BASE_URL` | asked for once, at creation: the web service's https address |
 | worker | `DATABASE_URL` | the same database |
 | worker | `SECRETS_ENCRYPTION_KEY` | copied from the web service, which encrypted the stored PayPal secrets |
-| worker | `DESTINATION_DATABASE_URL` | asked for once, at creation; empty runs API-only |
+| worker | `DESTINATION_DATABASE_URL` | asked for once, at creation; leave it empty then and set it after step 4 |
+| worker | `DESTINATION_PRIVATE_NETWORK` | `1`: allows Render's internal hostnames without TLS. Public hosts still need verify-full |
 
 Not in the Blueprint, on purpose:
 - **`CLIENT_IP_HEADER`** is added by hand after the test below. Until then every client shares one rate-limit count.
 - **Operator email and password** are typed into a shell only to seed, and are never stored as env.
-- **The destination owner's login** stays on your machine.
+- **The merchant database's owner login** is pasted into a shell once, for setup, and never stored as env.
 
 Choices made in the Blueprint:
-- **The database allows no outside connections** (`ipAllowList: []`). Migrations run from the web service's shell instead.
+- **Neither database allows outside connections** (`ipAllowList: []`). Migrations and setup run from a service's shell instead.
 - **There's no health check path.** `/api/health` reports 503 while the worker is down, and Render would then stop sending checkout
   traffic to a web app that works. Use it to look, not to route.
 - **Paid starter plans.** A free web service sleeps after 15 idle minutes, so PayPal's webhooks would hit a cold start. Workers have no
@@ -40,33 +43,51 @@ Choices made in the Blueprint:
 
 These touch hosted systems, so the owner runs them. Each step says what you should see.
 
-1. **Supabase project.** Pick the region nearest Render's `oregon`. Download the CA certificate as `supabase-ca.crt`
-   (Project Settings → Database → SSL). Use the **session pooler** connection, port 5432: Render can't be relied on to reach the IPv6-only
-   direct address. The pooler's user name is `<role>.<project-ref>`.
-2. **Destination setup, from your machine, once:**
-   ```sh
-   DESTINATION_OWNER_URL='postgresql://postgres.<ref>:<db password>@<pooler host>:5432/postgres?sslmode=verify-full&sslrootcert=./supabase-ca.crt' \
-   DESTINATION_SYNC_PASSWORD='<new password for billingrelay_sync>' pnpm destination:setup
-   ```
-   You should see `Destination ready at version 1`. Running it again changes nothing.
-3. **Push to GitHub, then in Render: New → Blueprint**, and pick the repo. When asked:
+1. **Push to GitHub, then in Render: New → Blueprint**, and pick the repo. When asked:
    - `BETTER_AUTH_URL` and `PUBLIC_BASE_URL`: `https://billingrelay-web.onrender.com`. If Render gives the service another address,
      change both to it afterwards and redeploy the web app.
-   - `DESTINATION_DATABASE_URL`: `postgresql://billingrelay_sync.<ref>:<sync password>@<pooler host>:5432/postgres?sslmode=verify-full&sslrootcert=/etc/secrets/supabase-ca.crt`
-4. **The worker's secret file:** worker → Environment → Secret Files → `supabase-ca.crt`, with the certificate's text.
-5. **Migrate and seed** from the web service's Shell, after its first deploy:
+   - `DESTINATION_DATABASE_URL`: leave empty for now.
+2. **Migrate and seed** from the web service's Shell, after its first deploy:
    ```sh
    pnpm db:migrate
    read -r OPERATOR_EMAIL; read -rs OPERATOR_PASSWORD; export OPERATOR_EMAIL OPERATOR_PASSWORD
    pnpm db:seed
    ```
-   Then restart the worker (Manual Deploy → Restart), so it starts against the migrated database.
-6. **Check:** `GET /api/health` returns 200 with `{"source":"ok","destination":"ok","worker":"ok"}`.
-   A destination of `not_ready` means a worker log line names the reason, such as `tls_unverified` for the wrong CA file.
-7. **Connect PayPal:** sign in at `/login`, open **PayPal** and enter the sandbox app's client ID and secret. This registers the webhook
+3. **Set up the merchant database** from the worker's Shell. Copy `billingrelay-merchant`'s **Internal Database URL** from its Render page:
+   ```sh
+   read -rs DESTINATION_OWNER_URL; read -rs DESTINATION_SYNC_PASSWORD; export DESTINATION_OWNER_URL DESTINATION_SYNC_PASSWORD
+   pnpm destination:setup
+   ```
+   Paste the internal URL, then a new password for the worker's role. You should see `Destination ready at version 3`. Running it again
+   changes nothing.
+4. **Point the worker at it:** worker → Environment → `DESTINATION_DATABASE_URL` =
+   `postgresql://billingrelay_sync:<that password>@<internal host from the URL>/merchant`, then save, which restarts the worker.
+5. **Check:** `GET /api/health` returns 200 with `{"source":"ok","destination":"ok","worker":"ok"}`.
+   A destination of `not_ready` means a worker log line names the reason, such as `tls_required` if the host isn't a private one.
+6. **Connect PayPal:** sign in at `/login`, open **PayPal** and enter the sandbox app's client ID and secret. This registers the webhook
    for this address.
-8. **Smoke purchase:** publish a product, create an API key, allow your app's origin, start a checkout and pay as a sandbox buyer. Expect the
-   checkout `captured`, then `sync: delivered`, and the row in Supabase's `billingrelay.purchases`.
+7. **Smoke purchase:** publish a product, create an API key, allow your app's origin, start a checkout and pay as a sandbox buyer. Expect the
+   checkout `captured`, then `sync: delivered`, and the row in the merchant database's `billingrelay.purchases` (read it from its Render
+   page's shell, or `psql` with its external URL after allowing your IP).
+
+## Supabase as the merchant database
+
+The worker connects to any Postgres as a plain client; Supabase is one. Its address is public, so TLS with a verified certificate is required,
+and `DESTINATION_PRIVATE_NETWORK` doesn't apply to it.
+
+1. In the Supabase project: Project Settings → Database → SSL → download the CA certificate as `supabase-ca.crt`. Use the **session pooler**
+   connection (port 5432). The direct address is IPv6-only, which many hosts can't reach. The pooler's user name is `<role>.<project-ref>`.
+2. Setup, once, from your machine:
+   ```sh
+   DESTINATION_OWNER_URL='postgresql://postgres.<ref>:<db password>@<pooler host>:5432/postgres?sslmode=verify-full&sslrootcert=./supabase-ca.crt' \
+   DESTINATION_SYNC_PASSWORD='<new password for billingrelay_sync>' pnpm destination:setup
+   ```
+3. The worker's URL: `postgresql://billingrelay_sync.<ref>:<sync password>@<pooler host>:5432/postgres?sslmode=verify-full&sslrootcert=<path to supabase-ca.crt>`.
+   Locally, that's a file path in `.env.local`. On Render, add the certificate as a secret file (worker → Environment → Secret Files) and use
+   `/etc/secrets/supabase-ca.crt`.
+4. Restart the worker. Health shows `destination: ok`; a wrong certificate shows `not_ready (tls_unverified)` and nothing is written.
+
+The tables appear under the `billingrelay` schema in Supabase's table editor, next to the app's own `public` tables, never mixed with them.
 
 ## The client IP header
 

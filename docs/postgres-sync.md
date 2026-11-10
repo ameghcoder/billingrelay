@@ -99,7 +99,9 @@ version is then delivered. It runs on its own queue, so a slow destination can't
 | Not ready | No schema, wrong version, permission denied, a role that could create things, no TLS | Same wait, with a code saying what to fix. The worker never fixes it itself |
 | One row refused | A value the table rejects | That row backs off: 5s, 30s, 2m, 10m, then hourly. After 8 attempts it's `failed`, and the others flow past it |
 
-Only codes are stored, never error text. A destination that isn't on this machine needs TLS with a verified certificate. With no destination set, changes
+Only codes are stored, never error text. A destination that isn't on this machine needs TLS with a verified certificate, unless the operator
+sets `DESTINATION_PRIVATE_NETWORK=1` and the host is private: a one-word name such as Render's internal `dpg-…-a` or a Docker service, or a
+private IP. A public name never qualifies. With no destination set, changes
 wait in the outbox, and setting one later delivers them all. A new, empty destination after delivery isn't refilled; that's reconciliation (M14).
 
 ## Failure behaviour

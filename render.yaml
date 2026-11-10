@@ -1,5 +1,5 @@
-# Render Blueprint: the web app, the worker and BillingRelay's own Postgres. Steps and checks: docs/deploy-render.md.
-# The merchant's destination database is not here: it's the merchant's, reached only by the worker.
+# Render Blueprint: the web app, the worker, BillingRelay's own Postgres, and a second Postgres standing in for a merchant's database.
+# Steps and checks: docs/deploy-render.md. A real merchant's database (Supabase or any Postgres) is reached only by the worker.
 
 databases:
   - name: billingrelay-source
@@ -9,6 +9,15 @@ databases:
     databaseName: billingrelay
     user: billingrelay
     # Only Render's own network reaches it. Migrations run from a service's Shell.
+    ipAllowList: []
+
+  # The demo's merchant database. Only the worker writes to it, as the restricted role `pnpm destination:setup` creates.
+  - name: billingrelay-merchant
+    plan: basic-256mb
+    region: oregon
+    postgresMajorVersion: "17"
+    databaseName: merchant
+    user: merchant
     ipAllowList: []
 
 services:
@@ -54,6 +63,9 @@ services:
           type: web
           name: billingrelay-web
           envVarKey: SECRETS_ENCRYPTION_KEY
-      # The destination as the restricted `billingrelay_sync` role, verify-full with the CA file. Empty for API-only.
+      # The destination as the restricted `billingrelay_sync` role. Empty for API-only. Set after destination setup (docs/deploy-render.md).
       - key: DESTINATION_DATABASE_URL
         sync: false
+      # Render's internal hostnames (dpg-…-a) only resolve inside its private network, so no TLS there. Public hosts still need verify-full.
+      - key: DESTINATION_PRIVATE_NETWORK
+        value: "1"

@@ -21,7 +21,7 @@ export type Destination = { pool: pg.Pool };
 /** No URL: sync is off. A URL we won't use is a setup problem, reported without connecting. */
 export function openDestination(url: string | undefined): Destination | { problem: string } | null {
   if (!url) return null;
-  const problem = destinationUrlProblem(url);
+  const problem = destinationUrlProblem(url, { privateNetwork: process.env.DESTINATION_PRIVATE_NETWORK === "1" });
   if (problem) return { problem };
   const pool = new pg.Pool({ ...POOL_SETTINGS, connectionString: url });
   // Without a listener, an idle connection dropping crashes the process. Only the code: the text can name the host.

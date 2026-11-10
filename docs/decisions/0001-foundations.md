@@ -64,3 +64,6 @@ Status: accepted, 2026-10-28 to 2026-11-05.
 39. **Spending checks end times itself; the expiry sweep only records.** A late worker can never let a lapsed month's credits be spent.
 40. **Private-network destinations may skip TLS, only on the operator's explicit `DESTINATION_PRIVATE_NETWORK=1`, and only for private hosts.**
     The hosted demo's merchant database and a Docker self-host live on private networks whose internal names have no public certificate.
+41. **The AI can't pick a price.** A deterministic check refuses any price or credit amount the person didn't write, so a prompt can't be
+    talked around it, and the agent's tools can read and check but not save. A person saves, approves an exact version (by its config hash),
+    and makes it live.

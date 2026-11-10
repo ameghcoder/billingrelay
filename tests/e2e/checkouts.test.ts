@@ -151,6 +151,7 @@ describe.runIf(process.env.E2E_WRITE_DB === "1" && process.env.E2E_PAYPAL === "1
       }),
     });
     const { id: versionId } = (await saved.json()) as { id: string };
+    expect((await admin(`${DRAFTS}/${versionId}/approve`, { method: "POST" })).status).toBe(200);
     expect((await admin(`${DRAFTS}/${versionId}/activate`, { method: "POST" })).status).toBe(200);
 
     const connected = await admin("/admin/paypal/connections/sandbox", {

@@ -43,6 +43,9 @@ services:
         sync: false
       - key: PUBLIC_BASE_URL
         sync: false
+      # AI setup. Empty: the catalog editor still works and the AI page says it isn't configured.
+      - key: OPENAI_API_KEY
+        sync: false
       # CLIENT_IP_HEADER is added by hand once Render's client IP header is confirmed; until then all clients share one count.
 
   - type: worker

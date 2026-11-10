@@ -11,7 +11,7 @@ const allowedDevOrigins = publicUrl && URL.canParse(publicUrl) ? [new URL(public
 
 const nextConfig: NextConfig = {
   allowedDevOrigins,
-  transpilePackages: ["@billingrelay/billing", "@billingrelay/core", "@billingrelay/db", "@billingrelay/provider-paypal"],
+  transpilePackages: ["@billingrelay/ai", "@billingrelay/billing", "@billingrelay/core", "@billingrelay/db", "@billingrelay/provider-paypal"],
   // Another site can't frame the admin or the hosted checkout to trick someone into clicking.
   headers() {
     return [

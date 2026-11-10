@@ -10,6 +10,7 @@
     "typecheck": "tsc"
   },
   "dependencies": {
+    "@billingrelay/ai": "workspace:*",
     "@billingrelay/billing": "workspace:*",
     "@billingrelay/core": "workspace:*",
     "@billingrelay/db": "workspace:*",

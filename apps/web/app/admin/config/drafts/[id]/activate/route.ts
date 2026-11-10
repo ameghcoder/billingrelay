@@ -14,6 +14,9 @@ export const POST = withProject<{ params: Promise<{ id: string }> }>(async ({ pr
   });
 
   if (result.status === "not_found") return apiError(404, "not_found", "This version doesn't exist");
+  if (result.status === "approval_required") {
+    return apiError(422, "approval_required", "Approve this exact version first. What's live hasn't changed.");
+  }
   if (result.status === "rejected") {
     return apiError(422, "config_rejected", "This version can't go live. What's live hasn't changed.", { fields: result.issues });
   }

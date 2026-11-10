@@ -33,7 +33,8 @@ pnpm dev                      # web on http://localhost:3100, plus the worker
 ```
 
 Sign in at http://localhost:3100/login, then open **PayPal** and enter your sandbox REST app's client ID and secret. Open **Catalog** to add what
-you sell: each save is a new version, and you choose when one goes live. `GET /api/health` reports the databases and the worker.
+you sell, or **AI setup** to describe it and let the AI draft it (needs `OPENAI_API_KEY`). Each save is a new version; you approve a version,
+then choose when it goes live. `GET /api/health` reports the databases and the worker.
 
 Open **Developers** to create an API key for your backend. It's shown once. With a product live, your backend can ask for a quote, which keeps its
 price even if the catalog changes, and expires:
@@ -112,7 +113,7 @@ Only capabilities with a recorded proof are marked verified.
 | One-way sync to an independent Postgres | ✅ verified locally | A separate Postgres server stopped during a real purchase converged with one row; a worker killed after the destination committed, two workers, a hanging destination, a refused row and a restricted role, `tests/invariants/sync.test.ts`. Not yet hosted, and no TLS destination yet |
 | Billing and sync dashboard, customer trace | ✅ verified locally | `tests/e2e/dashboard.test.ts` against a production build with planted rows: "Paid, not synced" in one click, a trace down to the failed attempt's code, no payload or buyer details in any response. Read-only |
 | Rate limits and PayPal token reuse | ✅ verified locally | Floods of forged events, wrong keys and sign-ins stop at their limits without blocking other addresses; a real purchase used one token. Per process, and Render's client IP header not yet confirmed |
-| AI billing setup (reviewed draft) | ⬜ not built | |
+| AI billing setup (reviewed draft) | ✅ verified locally | The real model drafted a membership with credits, a pack and a two-license product that passed every rule; with no price given it asked. A price it didn't hear is refused in code. Nothing goes live without a person approving that exact version (`tests/e2e/ai-setup.test.ts`, `tests/invariants/approval.test.ts`) |
 | AI investigation and safe retry | ⬜ not built | |
 
 Not supported: providers other than PayPal, tax, inventory, shipping, trials, proration,

@@ -1,10 +1,14 @@
+export { listAudit, recordAudit, type AuditEntry } from "./audit";
 export {
   activateCatalogVersion,
+  approveCatalogVersion,
+  catalogConfigHash,
   getActiveCatalog,
   getCatalogVersion,
   listCatalogVersions,
   saveCatalogVersion,
   type ActivateCatalogResult,
+  type ApproveCatalogResult,
   type ActiveCatalog,
   type CatalogVersionRecord,
   type CatalogVersionWithConfig,

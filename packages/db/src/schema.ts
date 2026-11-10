@@ -142,6 +142,45 @@ export const catalogActive = pgTable(
   ],
 );
 
+// A person approved this exact version. The hash is of its stored config, checked again when it goes live, so an approval
+// can't carry over to anything else, even a row changed by hand.
+export const catalogApproval = pgTable(
+  "catalog_approval",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    versionId: uuid("version_id")
+      .notNull()
+      .references(() => catalogVersion.id),
+    configHash: text("config_hash").notNull(),
+    approvedBy: text("approved_by")
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("catalog_approval_version_unique").on(table.versionId)],
+);
+
+// Who did what to configuration: a person, the AI setup agent or an MCP client. Hashes and IDs, never customer data or prompts.
+export const auditEvent = pgTable(
+  "audit_event",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id),
+    actorKind: text("actor_kind").$type<"operator" | "ai" | "mcp">().notNull(),
+    actorId: text("actor_id").notNull(),
+    action: text("action").notNull(),
+    target: text("target"),
+    detail: jsonb("detail").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("audit_event_actor_kind_check", sql`${table.actorKind} IN ('operator', 'ai', 'mcp')`),
+    index("audit_event_project_idx").on(table.projectId, table.createdAt),
+  ],
+);
+
 // The key itself is never stored. It decides the project and environment of every /v1 request.
 export const apiKey = pgTable(
   "api_key",

@@ -19,8 +19,14 @@ const send = (path: string, init: RequestInit = {}) =>
   });
 
 const save = (body: unknown, init: RequestInit = {}) => send(DRAFTS, { method: "POST", body: JSON.stringify(body), ...init });
-const activate = (id: string) => send(`${DRAFTS}/${id}/activate`, { method: "POST" });
-const readVersions = async () => (await (await send(DRAFTS)).json()).versions as { id: string; version: number; isLive: boolean }[];
+const approve = (id: string) => send(`${DRAFTS}/${id}/approve`, { method: "POST" });
+const activateOnly = (id: string) => send(`${DRAFTS}/${id}/activate`, { method: "POST" });
+// Most tests are about the rules for going live, so they approve first; the approval tests below don't.
+const activate = async (id: string) => {
+  await approve(id);
+  return activateOnly(id);
+};
+const readVersions = async () => (await (await send(DRAFTS)).json()).versions as { id: string; version: number; isLive: boolean; approved: boolean }[];
 
 const price = (amount: unknown = 900, currency: unknown = "USD") => ({ amount, currency });
 
@@ -267,6 +273,26 @@ describe.runIf(process.env.E2E_WRITE_DB === "1")("saved versions", () => {
   it("keeps the live version when an unknown one is activated", async () => {
     expect((await activate(UNKNOWN_ID)).status).toBe(404);
     expect(await readLive()).toEqual([v1.version]);
+  });
+
+  it("going live needs a person's approval of that exact version, and a new version needs its own", async () => {
+    const latest = (await readVersions())[0]!;
+    const saved = await save({ baseVersion: latest.version, config: catalog(template({ name: "Approval check" })) });
+    const { id } = (await saved.json()) as { id: string };
+    const refused = await activateOnly(id);
+    expect(refused.status).toBe(422);
+    expect((await refused.json()).error.code).toBe("approval_required");
+    expect(await readLive()).toEqual([v1.version]);
+
+    expect((await approve(id)).status).toBe(200);
+    expect((await readVersions()).find((version) => version.id === id)).toMatchObject({ approved: true });
+    expect((await activateOnly(id)).status).toBe(200);
+
+    const next = await save({ baseVersion: latest.version + 1, config: catalog(template({ name: "After approval" })) });
+    const nextId = ((await next.json()) as { id: string }).id;
+    expect((await readVersions()).find((version) => version.id === nextId)).toMatchObject({ approved: false });
+    expect((await activateOnly(nextId)).status).toBe(422);
+    expect((await approve(UNKNOWN_ID)).status).toBe(404);
   });
 
   it("refuses to save an existing ref as a different kind", async () => {

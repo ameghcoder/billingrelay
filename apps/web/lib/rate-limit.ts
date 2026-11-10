@@ -10,6 +10,8 @@ export const RATE_RULES = {
   checkoutPage: { name: "checkout-page", max: 60, windowSeconds: 60 },
   /** Only events PayPal refused count, so real events never use it up. A real event sent during a flood is resent by PayPal. */
   webhookRefused: { name: "webhook-refused", max: 30, windowSeconds: 60 },
+  // Each run calls the model up to 6 times, which costs money.
+  aiDraft: { name: "ai-draft", max: 10, windowSeconds: 60 },
 } satisfies Record<string, RateRule>;
 
 // Kept on globalThis: Next can load this module more than once, and each copy would otherwise count on its own.

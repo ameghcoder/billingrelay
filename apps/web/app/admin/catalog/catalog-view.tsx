@@ -88,6 +88,7 @@ const editableProductColumns = [...productColumns, editColumn];
 const versionColumns: ColDef<CatalogVersionSummary>[] = [
   { field: "version", headerName: "Version", width: 100, valueFormatter: ({ value }) => `v${value}` },
   { field: "isLive", headerName: "Status", width: 110, valueFormatter: ({ value }) => (value ? "Live" : "Not live") },
+  { field: "approved", headerName: "Approved", width: 110, valueFormatter: ({ value }) => (value ? "Yes" : "") },
   { field: "productCount", headerName: "Products", width: 110 },
   {
     field: "createdAt",
@@ -132,10 +133,10 @@ export function CatalogView({
   const isLatest = selected?.id === versions[0]?.id;
   const productRows = useMemo(() => (selected ? toRows(selected.config.products) : []), [selected]);
 
-  async function makeLive(version: CatalogVersionDetail) {
+  async function act(version: CatalogVersionDetail, action: "approve" | "activate") {
     setBusy(true);
     setFailure(null);
-    const result = await callAdminApi(`/admin/config/drafts/${version.id}/activate`, { method: "POST" });
+    const result = await callAdminApi(`/admin/config/drafts/${version.id}/${action}`, { method: "POST" });
     if ("failure" in result) setFailure(result.failure);
     else router.refresh();
     setBusy(false);
@@ -178,8 +179,18 @@ export function CatalogView({
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               {!selected.isLive && (
-                <div>
-                  <Button disabled={busy} onClick={() => makeLive(selected)}>
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Approval is for exactly this version: a new version, from here, the AI or MCP, needs its own. */}
+                  {selected.approved ? (
+                    <Badge variant="outline" data-testid="approved">
+                      Approved
+                    </Badge>
+                  ) : (
+                    <Button variant="outline" disabled={busy} onClick={() => act(selected, "approve")} data-testid="approve">
+                      {busy ? "Working…" : `Approve v${selected.version}`}
+                    </Button>
+                  )}
+                  <Button disabled={busy || !selected.approved} onClick={() => act(selected, "activate")}>
                     {busy ? "Working…" : `Make v${selected.version} live`}
                   </Button>
                 </div>

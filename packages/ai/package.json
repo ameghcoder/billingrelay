@@ -1,0 +1,22 @@
+{
+  "name": "@billingrelay/ai",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "4.0.104",
+    "@billingrelay/core": "workspace:*",
+    "ai": "7.0.155",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3"
+  }
+}

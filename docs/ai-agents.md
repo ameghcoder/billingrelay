@@ -25,6 +25,17 @@ configuration.
 
 AI must not invent credentials, guess taxes, silently change prices or claim an unverified capability.
 
+### As built (M12)
+
+- `/admin/ai`: the operator describes what they sell. `packages/ai` runs the model (gpt-4o-mini by default, `OPENAI_MODEL` to change) with three
+  tools: read the live catalog, check a proposal against every catalog and activation rule, and ask the operator. At most 6 steps; asking ends the turn.
+- **Enforced in code, not the prompt:** every price and credit amount in a new or changed product must be a number the person wrote in this
+  conversation (or one that product already had live). A price copied from another product is refused back to the model, which then asks.
+- The proposal is shown against what's live (new, changed, removed). Saving it makes an ordinary new version, not approved and not live.
+- **Approval** binds to one version and the hash of its stored config. Going live checks both inside the activation transaction.
+- Every AI run, approval and activation is in `audit_event`, with IDs and hashes, never the prompt's text.
+- No key, or the model down: the route says so and the catalog editor works as before.
+
 ## Supporting: billing investigation agent
 
 > "The customer paid, but Pro access is still missing."

@@ -112,6 +112,7 @@ async function publishCatalog(config: object) {
   const saved = await adminPost(DRAFTS, { baseVersion: versions[0]?.version ?? 0, config });
   expect(saved.status).toBe(201);
   const { id, version } = (await saved.json()) as { id: string; version: number };
+  expect((await adminPost(`${DRAFTS}/${id}/approve`)).status).toBe(200);
   expect((await adminPost(`${DRAFTS}/${id}/activate`)).status).toBe(200);
   return version;
 }

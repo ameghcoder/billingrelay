@@ -281,6 +281,8 @@ export const catalogVersionSummarySchema = z.object({
   version: z.number(),
   isLive: z.boolean(),
   productCount: z.number(),
+  // A person approved exactly this version. Making it live needs this.
+  approved: z.boolean(),
   createdAt: z.string(),
 });
 export type CatalogVersionSummary = z.infer<typeof catalogVersionSummarySchema>;

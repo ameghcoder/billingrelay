@@ -1,17 +1,46 @@
 import type { CatalogConfig, FieldIssue } from "@billingrelay/core/catalog";
+import { hashPayload } from "@billingrelay/core/idempotency";
 import { and, desc, eq, max, sql } from "drizzle-orm";
+import { recordAudit } from "./audit";
 import { getDb } from "./client";
-import { catalogActive, catalogVersion, type ProjectScope } from "./schema";
+import { catalogActive, catalogApproval, catalogVersion, type ProjectScope } from "./schema";
 
 const summaryColumns = {
   id: catalogVersion.id,
   version: catalogVersion.version,
   isLive: sql<boolean>`${catalogActive.versionId} IS NOT NULL`,
   productCount: sql<number>`json_array_length(${catalogVersion.config} -> 'products')`,
+  approved: sql<boolean>`EXISTS (SELECT 1 FROM catalog_approval a WHERE a.version_id = ${catalogVersion.id})`,
   createdAt: catalogVersion.createdAt,
 };
 
-export type CatalogVersionRecord = { id: string; version: number; isLive: boolean; productCount: number; createdAt: Date };
+export type CatalogVersionRecord = { id: string; version: number; isLive: boolean; productCount: number; approved: boolean; createdAt: Date };
+
+/** What an approval binds to: the stored config, with keys sorted, so the same document always hashes the same. */
+export const catalogConfigHash = (config: CatalogConfig) => hashPayload(config);
+
+export type ApproveCatalogResult = { status: "approved"; version: number; configHash: string } | { status: "not_found" };
+
+/** A person approves this exact version. Saving another version never carries this over: it has its own ID and hash. */
+export async function approveCatalogVersion(values: ProjectScope & { versionId: string; approvedBy: string }): Promise<ApproveCatalogResult> {
+  return getDb().transaction(async (tx) => {
+    const [target] = await tx
+      .select({ version: catalogVersion.version, config: catalogVersion.config })
+      .from(catalogVersion)
+      .where(and(inScope(values), eq(catalogVersion.id, values.versionId)));
+    if (!target) return { status: "not_found" };
+    const configHash = catalogConfigHash(target.config);
+    await tx
+      .insert(catalogApproval)
+      .values({ versionId: values.versionId, configHash, approvedBy: values.approvedBy })
+      .onConflictDoUpdate({ target: catalogApproval.versionId, set: { configHash, approvedBy: values.approvedBy, createdAt: sql`now()` } });
+    await recordAudit(
+      { projectId: values.projectId, actorKind: "operator", actorId: values.approvedBy, action: "catalog.approve", target: values.versionId, detail: { version: target.version, configHash } },
+      tx,
+    );
+    return { status: "approved", version: target.version, configHash };
+  });
+}
 export type CatalogVersionWithConfig = CatalogVersionRecord & { config: CatalogConfig };
 export type ActiveCatalog = { id: string; version: number; config: CatalogConfig };
 
@@ -76,6 +105,7 @@ export async function saveCatalogVersion(
 export type ActivateCatalogResult =
   | { status: "activated"; version: number }
   | { status: "not_found" }
+  | { status: "approval_required" }
   | { status: "rejected"; issues: FieldIssue[] };
 
 /** `check` runs while the live row is locked, so it can't pass against a version that's being replaced. */
@@ -101,6 +131,10 @@ export async function activateCatalogVersion(
       .for("update", { of: catalogActive });
     if (live?.versionId === values.versionId) return { status: "activated", version: target.version };
 
+    // Approved, and still exactly what was approved.
+    const [approval] = await tx.select({ configHash: catalogApproval.configHash }).from(catalogApproval).where(eq(catalogApproval.versionId, values.versionId));
+    if (!approval || approval.configHash !== catalogConfigHash(target.config)) return { status: "approval_required" };
+
     const issues = values.check(target.config, live?.config ?? null);
     if (issues.length > 0) return { status: "rejected", issues };
 
@@ -116,6 +150,10 @@ export async function activateCatalogVersion(
         target: [catalogActive.projectId, catalogActive.environment],
         set: { versionId: values.versionId, activatedAt: sql`now()`, activatedBy: values.activatedBy },
       });
+    await recordAudit(
+      { projectId: values.projectId, actorKind: "operator", actorId: values.activatedBy, action: "catalog.activate", target: values.versionId, detail: { version: target.version } },
+      tx,
+    );
     return { status: "activated", version: target.version };
   });
 }

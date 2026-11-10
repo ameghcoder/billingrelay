@@ -115,6 +115,7 @@ Only capabilities with a recorded proof are marked verified.
 | Rate limits and PayPal token reuse | ✅ verified locally | Floods of forged events, wrong keys and sign-ins stop at their limits without blocking other addresses; a real purchase used one token. Per process, and Render's client IP header not yet confirmed |
 | AI billing setup (reviewed draft) | ✅ verified locally | The real model drafted a membership with credits, a pack and a two-license product that passed every rule; with no price given it asked. A price it didn't hear is refused in code. Nothing goes live without a person approving that exact version (`tests/e2e/ai-setup.test.ts`, `tests/invariants/approval.test.ts`) |
 | Visual flow builder | ✅ verified locally | Drawn from a real AI draft; an edit on the canvas saved a new, unapproved version in the same history (`tests/e2e/flow.test.ts`, `tests/e2e/ai-setup.test.ts`) |
+| MCP adapter | ✅ verified locally | The official MCP client drafted a version, read a customer and was refused nothing it's allowed; no tool approves or goes live, MCP and backend keys each refused on the other endpoint (`tests/e2e/mcp.test.ts`) |
 | AI investigation and safe retry | ⬜ not built | |
 
 Not supported: providers other than PayPal, tax, inventory, shipping, trials, proration,

@@ -67,3 +67,5 @@ Status: accepted, 2026-10-28 to 2026-11-05.
 41. **The AI can't pick a price.** A deterministic check refuses any price or credit amount the person didn't write, so a prompt can't be
     talked around it, and the agent's tools can read and check but not save. A person saves, approves an exact version (by its config hash),
     and makes it live.
+42. **MCP clients get their own kind of key and no tool that approves or goes live.** A leaked backend key can't edit the catalog, a leaked MCP
+    key can't take payments, and "only a person makes it live" holds because the capability doesn't exist on that surface.

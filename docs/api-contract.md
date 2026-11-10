@@ -195,6 +195,13 @@ and `503` when PayPal can't answer, so it sends the event again. The same event 
 The worker reads stored events afterwards. An event only says which checkout to look at: the worker asks PayPal for the facts, using the same
 code as `/confirm`. Stored events end as `processed`, `ignored` (nothing of ours, or a type with no handler yet) or `failed` after 8 attempts.
 
+## MCP (`Authorization: Bearer <MCP key>`)
+
+`POST /mcp`: the Model Context Protocol over streamable HTTP, stateless. An MCP key (`br_mcp_…`, created under Developers) scopes every call to
+its project. Tools: `read_live_catalog`, `check_catalog`, `save_draft` (a new version, not approved, not live), `list_versions`,
+`inspect_customer`. No tool approves a version or makes one live. Every call is audited by tool name, never its arguments. The same rate
+limits as `/v1` apply.
+
 ## Health (public)
 
 `GET /api/health` returns `{ source, destination, worker }` and nothing else: `ok` or `down` for the source, `ok` or `stale` for the worker,
@@ -217,7 +224,7 @@ used as an environment: `live` returns `422 live_disabled` before any PayPal cal
 | `POST /admin/paypal/connections/:environment/check` | Read-only health and capability check. |
 | `POST /admin/paypal/connections/:environment/webhook` | Set up the webhook again (safe to repeat), then run the check. |
 | `GET /admin/developers/api-keys` | API keys: name, last 4 characters, status. Never the key or its hash. |
-| `POST /admin/developers/api-keys` | `{ name }`. Returns `201` with the full `key`, the only time it's ever shown. Only its SHA-256 hash and last 4 characters are stored. |
+| `POST /admin/developers/api-keys` | `{ name, kind? }`, `kind` is `backend` (default, for `/v1`) or `mcp` (for `/mcp`); each endpoint refuses the other kind with `403 wrong_key_kind`. Returns `201` with the full `key`, the only time it's ever shown. Only its SHA-256 hash and last 4 characters are stored. |
 | `POST /admin/developers/api-keys/:id/revoke` | Stops the key on its next request. Safe to repeat. Quotes it created stay as they are. |
 | `GET /admin/developers/return-origins` | Origins a checkout's `returnUrl` may use. |
 | `POST /admin/developers/return-origins` | `{ origin }`, such as `https://app.example.com`: HTTPS, except `http://localhost`, with no path. Safe to repeat. |

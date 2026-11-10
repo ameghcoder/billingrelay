@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -80,8 +81,9 @@ const columns: ColDef<ApiKeySummary>[] = [
     headerName: "Key",
     flex: 2,
     minWidth: 170,
-    valueFormatter: ({ data }) => (data ? `br_${data.environment}_…${data.lastFour}` : ""),
+    valueFormatter: ({ data }) => (data ? `br_${data.kind === "mcp" ? "mcp_" : ""}${data.environment}_…${data.lastFour}` : ""),
   },
+  { field: "kind", headerName: "For", width: 120, valueFormatter: ({ value }) => (value === "mcp" ? "MCP (AI client)" : "Backend") },
   {
     field: "createdAt",
     headerName: "Created",
@@ -98,7 +100,7 @@ export function KeysPanel({ keys }: { keys: ApiKeySummary[] }) {
   const [created, setCreated] = useState<CreatedApiKey | null>(null);
   const [copied, setCopied] = useState(false);
   const [failure, setFailure] = useState<ApiFailure | null>(null);
-  const form = useForm<CreateApiKey>({ resolver: zodResolver(createApiKeySchema), defaultValues: { name: "" } });
+  const form = useForm<CreateApiKey>({ resolver: zodResolver(createApiKeySchema), defaultValues: { name: "", kind: "backend" } });
 
   const create = form.handleSubmit(async (values) => {
     setFailure(null);
@@ -163,6 +165,13 @@ export function KeysPanel({ keys }: { keys: ApiKeySummary[] }) {
               <Label htmlFor="name">Name</Label>
               <Input id="name" autoComplete="off" {...form.register("name")} />
               {form.formState.errors.name && <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>}
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="kind">For</Label>
+              <NativeSelect id="kind" {...form.register("kind")}>
+                <option value="backend">Your backend (/v1): checkouts, quotes, credits</option>
+                <option value="mcp">An AI client (/mcp): drafts and reads, can&apos;t approve or go live</option>
+              </NativeSelect>
             </div>
             {failure && <ApiFailureMessage failure={failure} />}
             <div>

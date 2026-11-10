@@ -44,6 +44,17 @@ AI must not invent credentials, guess taxes, silently change prices or claim an 
 - Four settings can be edited: product name, price, credits and access key. An edit saves a new version from the latest one, through the same
   rules as the editor and the AI, so the history stays one list and the new version needs its own approval. No other nodes, links or code.
 
+### As built (M19)
+
+`/mcp` serves the same reads and checks as AI setup to any MCP client, plus saving a draft version and reading a customer's billing. Create an
+MCP key under Developers (it only works on `/mcp`, and a backend key doesn't work there), then, for example:
+
+```sh
+claude mcp add --transport http billingrelay https://<your BillingRelay>/mcp --header "Authorization: Bearer br_mcp_sandbox_..."
+```
+
+The client can draft and inspect. Approving and going live have no tool at all, so they stay with a person in the dashboard.
+
 ## Supporting: billing investigation agent
 
 > "The customer paid, but Pro access is still missing."

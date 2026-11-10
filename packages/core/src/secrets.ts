@@ -57,8 +57,8 @@ export function decryptSecret(encoded: string, binding: string): string {
 // SHA-256 is enough: slow hashes protect guessable passwords, and an API key is 256 random bits.
 export const hashApiKey = (key: string) => createHash("sha256").update(key).digest("hex");
 
-/** Only the hash and the last 4 characters get stored. `key` is shown to the operator once. */
-export function generateApiKey(environment: "sandbox" | "live") {
-  const key = `br_${environment}_${randomBytes(API_KEY_BYTES).toString("base64url")}`;
+/** Only the hash and the last 4 characters get stored. `key` is shown to the operator once. An MCP key says so in its prefix. */
+export function generateApiKey(environment: "sandbox" | "live", kind: "backend" | "mcp" = "backend") {
+  const key = `br_${kind === "mcp" ? "mcp_" : ""}${environment}_${randomBytes(API_KEY_BYTES).toString("base64url")}`;
   return { key, keyHash: hashApiKey(key), lastFour: key.slice(-4) };
 }

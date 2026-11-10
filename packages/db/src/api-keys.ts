@@ -6,6 +6,7 @@ const summaryColumns = {
   id: apiKey.id,
   name: apiKey.name,
   environment: apiKey.environment,
+  kind: apiKey.kind,
   lastFour: apiKey.lastFour,
   createdAt: apiKey.createdAt,
   revokedAt: apiKey.revokedAt,
@@ -15,13 +16,14 @@ export type ApiKeyRecord = {
   id: string;
   name: string;
   environment: "sandbox" | "live";
+  kind: "backend" | "mcp";
   lastFour: string;
   createdAt: Date;
   revokedAt: Date | null;
 };
 
 export async function createApiKey(
-  values: ProjectScope & { name: string; keyHash: string; lastFour: string; createdBy: string },
+  values: ProjectScope & { name: string; kind: "backend" | "mcp"; keyHash: string; lastFour: string; createdBy: string },
 ): Promise<ApiKeyRecord> {
   const [row] = await getDb().insert(apiKey).values(values).returning(summaryColumns);
   return row!;
@@ -45,12 +47,12 @@ export async function revokeApiKey({ projectId, environment }: ProjectScope, id:
   return row ?? null;
 }
 
-export type ActiveApiKey = ProjectScope & { id: string };
+export type ActiveApiKey = ProjectScope & { id: string; kind: "backend" | "mcp"; createdBy: string };
 
 /** A revoked key stops working on its next request, because nothing here is cached. */
 export async function findActiveApiKey(keyHash: string): Promise<ActiveApiKey | null> {
   const [row] = await getDb()
-    .select({ id: apiKey.id, projectId: apiKey.projectId, environment: apiKey.environment })
+    .select({ id: apiKey.id, projectId: apiKey.projectId, environment: apiKey.environment, kind: apiKey.kind, createdBy: apiKey.createdBy })
     .from(apiKey)
     .where(and(eq(apiKey.keyHash, keyHash), isNull(apiKey.revokedAt)));
   return row ?? null;

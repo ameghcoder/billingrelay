@@ -14,7 +14,7 @@ export const POST = withProject(async ({ request, projectId, operator }) => {
   if (!body.success) return invalidRequest(body.error);
 
   const scope = sandboxScope(projectId);
-  const { key, keyHash, lastFour } = generateApiKey(scope.environment);
-  const record = await createApiKey({ ...scope, name: body.data.name, keyHash, lastFour, createdBy: operator.id });
+  const { key, keyHash, lastFour } = generateApiKey(scope.environment, body.data.kind);
+  const record = await createApiKey({ ...scope, name: body.data.name, kind: body.data.kind, keyHash, lastFour, createdBy: operator.id });
   return jsonResponse({ ...toApiKeySummary(record), key }, 201);
 });

@@ -191,6 +191,8 @@ export const apiKey = pgTable(
       .references(() => project.id),
     environment: text("environment").$type<"sandbox" | "live">().notNull(),
     name: text("name").notNull(),
+    // `backend` for /v1, `mcp` for /mcp. Each endpoint refuses the other kind.
+    kind: text("kind").$type<"backend" | "mcp">().notNull().default("backend"),
     keyHash: text("key_hash").notNull(),
     lastFour: text("last_four").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -202,6 +204,7 @@ export const apiKey = pgTable(
   (table) => [
     unique("api_key_key_hash_unique").on(table.keyHash),
     check("api_key_environment_check", sql`${table.environment} IN ('sandbox', 'live')`),
+    check("api_key_kind_check", sql`${table.kind} IN ('backend', 'mcp')`),
   ],
 );
 

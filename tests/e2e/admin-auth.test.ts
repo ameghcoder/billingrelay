@@ -51,7 +51,8 @@ const routesIn = (dir: string) =>
     });
 
 // Anything outside /admin and /v1 has no credential. A new one fails below until it's added here, on purpose.
-const PUBLIC_ROUTES = ["/api/auth/all", "/api/health", "/checkout/id/confirm", "/checkout/id/pay", "/webhooks/paypal/connectionId"];
+// `/mcp` checks its own MCP key (tests/e2e/mcp.test.ts), like /v1 checks API keys.
+const PUBLIC_ROUTES = ["/api/auth/all", "/api/health", "/checkout/id/confirm", "/checkout/id/pay", "/mcp", "/webhooks/paypal/connectionId"];
 const PUBLIC_PAGES = ["", "/checkout/id", "/checkout/id/return", "/login"];
 
 const outsideProtectedFolders = (suffix: string) =>

@@ -1,0 +1,2 @@
+ALTER TABLE "api_key" ADD COLUMN "kind" text DEFAULT 'backend' NOT NULL;--> statement-breakpoint
+ALTER TABLE "api_key" ADD CONSTRAINT "api_key_kind_check" CHECK ("api_key"."kind" IN ('backend', 'mcp'));

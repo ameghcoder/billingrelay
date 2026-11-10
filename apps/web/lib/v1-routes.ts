@@ -23,6 +23,8 @@ export function withApiKey<C = unknown>(handler: ApiKeyHandler<C>) {
         limiter.hit(RATE_RULES.apiKeyRefusedPerIp, ip);
         return apiError(401, "invalid_api_key", "Send a valid API key: Authorization: Bearer <key>");
       }
+      // An MCP key drafts catalogs; it can't take payments or read billing here.
+      if (apiKey.kind !== "backend") return apiError(403, "wrong_key_kind", "This is an MCP key. Use it on /mcp; /v1 needs a backend API key.");
       const perKey = limiter.hit(RATE_RULES.apiKey, apiKey.id);
       if (!perKey.allowed) return tooManyRequests(perKey);
       if (apiKey.environment !== "sandbox") return apiError(422, "live_disabled", "Live is not enabled");

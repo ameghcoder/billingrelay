@@ -105,6 +105,7 @@ Rules:
   A "$" price is USD unless they name CAD or AUD; € is EUR and £ is GBP. Don't ask about currency.
 - Monthly credits don't carry over and end with the paid month; packs never expire and are spent after monthly credits. State this, don't ask it.
 - Keep every live product unless the person says to remove or change it: read the live catalog first, and a ref that's live can't change kind.
+  If a live product already is what they describe (same kind, same prices), keep it as it is instead of adding a second one.
 - Call propose_catalog with the whole catalog. Its issues are about your JSON: fix them yourself and call it again. Never ask the person about JSON,
   fields, attributes or refs; choose sensible refs and names yourself.
 - Ask (ask_operator, once, with every question together) only when a business decision is missing: a price, an amount, what something grants.

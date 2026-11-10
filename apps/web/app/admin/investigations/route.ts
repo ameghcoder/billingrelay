@@ -42,7 +42,7 @@ export const POST = withProject(async ({ request, projectId, operator }) => {
     else {
       action = await proposeRepair(scope, { ...proposal, proposedBy: operator.id });
       // A row that's only waiting because the database refuses everything: the repair for that is retrying the sync itself.
-      if (!action && proposal.kind === "retry_delivery") {
+      if (!action && proposal.kind === "retry_delivery" && ["down", "not_ready"].includes((await getSyncOverview()).destination.state)) {
         action = await proposeRepair(scope, { kind: "retry_sync", targetId: null, reason: proposal.reason, proposedBy: operator.id });
       }
       if (!action) proposalDropped = "It doesn't apply now: the record isn't in a state that repair is for.";

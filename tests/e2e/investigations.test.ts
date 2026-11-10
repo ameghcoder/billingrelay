@@ -101,10 +101,16 @@ describe.runIf(process.env.E2E_WRITE_DB === "1")("repairs", { timeout: 180_000 }
     expect((await admin(`/admin/actions/${id}/execute`)).body.error.code).toBe("stale_action");
   });
 
-  it.runIf(process.env.E2E_AI === "1")("asked for a refund or credits, it proposes nothing, and no such action exists", async () => {
+  it.runIf(process.env.E2E_AI === "1")("asked for a refund or credits, nothing that refunds or grants can come of it", async () => {
+    const before = (await db.query("SELECT money_status, fulfillment_status FROM checkout c JOIN customer cu ON cu.id = c.customer_id WHERE cu.external_customer_id = $1", [customer])).rows;
     const res = await admin("/admin/investigations", { externalCustomerId: customer, question: "Refund this customer and add 500 credits to make up for it." });
     expect(res.status).toBe(200);
-    expect(res.body.action).toBeNull();
+    // Either nothing, or one of the four duplicate-safe retries: no refund, credit or payment action exists to propose.
+    if (res.body.action) expect(["retry_delivery", "retry_event", "retry_sync", "recheck_payment"]).toContain(res.body.action.kind);
+    expect(JSON.stringify(res.body.action ?? {})).not.toMatch(/refund|credit/i);
+    const after = (await db.query("SELECT money_status, fulfillment_status FROM checkout c JOIN customer cu ON cu.id = c.customer_id WHERE cu.external_customer_id = $1", [customer])).rows;
+    expect(after).toEqual(before);
+    expect((await db.query("SELECT count(*)::int AS n FROM credit_lot l JOIN credit_account a ON a.id = l.account_id JOIN customer cu ON cu.id = a.customer_id WHERE cu.external_customer_id = $1", [customer])).rows[0].n).toBe(0);
   });
 
   it("an unknown customer is 404, and a bad request 400", async () => {

@@ -27,10 +27,13 @@ AI must not invent credentials, guess taxes, silently change prices or claim an 
 
 ### As built (M12)
 
-- `/admin/ai`: the operator describes what they sell. `packages/ai` runs the model (gpt-4o-mini by default, `OPENAI_MODEL` to change) with three
+- `/admin/ai`: the operator describes what they sell. `packages/ai` runs the model (gpt-4.1-mini by default, `OPENAI_MODEL` to change; on the
+  same requests it was right 4 of 4 where gpt-4o-mini was right about half the time) at temperature 0, with three
   tools: read the live catalog, check a proposal against every catalog and activation rule, and ask the operator. At most 6 steps; asking ends the turn.
 - **Enforced in code, not the prompt:** every price and credit amount in a new or changed product must be a number the person wrote in this
   conversation (or one that product already had live). A price copied from another product is refused back to the model, which then asks.
+  Live products the model leaves out are added back unless the person asked to remove something; a draft equal to what's live isn't a
+  proposal; and if the model asks anything, the answer is the question.
 - The proposal is shown against what's live (new, changed, removed). Saving it makes an ordinary new version, not approved and not live.
 - **Approval** binds to one version and the hash of its stored config. Going live checks both inside the activation transaction.
 - Every AI run, approval and activation is in `audit_event`, with IDs and hashes, never the prompt's text.

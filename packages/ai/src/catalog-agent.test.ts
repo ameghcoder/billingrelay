@@ -1,7 +1,7 @@
 import { catalogConfigSchema, toFieldIssues } from "@billingrelay/core/catalog";
 import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it } from "vitest";
-import { findUnstatedAmounts, runCatalogAgent, statedNumbers, type CatalogPorts } from "./catalog-agent";
+import { findUnstatedAmounts, keepLiveProducts, runCatalogAgent, statedNumbers, type CatalogPorts } from "./catalog-agent";
 
 // A scripted model: each step is what "the model" says next. The tools, validation and loop are the real ones.
 type LanguageModelV4GenerateResult = Awaited<ReturnType<MockLanguageModelV4["doGenerate"]>>;
@@ -143,5 +143,30 @@ describe("findUnstatedAmounts", () => {
     const result = await runCatalogAgent({ model, ports: ports({ products: [pro] }), message: "Add a monthly Team plan with team access." });
     expect(result).toMatchObject({ outcome: "questions" });
     expect(JSON.stringify(model.doGenerateCalls[1]!.prompt)).toContain("didn't state this price");
+  });
+});
+
+describe("outcomes", () => {
+  it("a question wins over a proposal made on the way", async () => {
+    const model = new MockLanguageModelV4({
+      doGenerate: [call("propose_catalog", { config: { products: [pack] } }), call("ask_operator", { questions: ["Which pack price?"] }, "a")],
+    });
+    const result = await runCatalogAgent({ model, ports: ports(), message: "A $5 pack of 1,000 credits" });
+    expect(result.outcome).toBe("questions");
+  });
+
+  it("the live catalog proposed back unchanged is no proposal", async () => {
+    const model = new MockLanguageModelV4({ doGenerate: [call("propose_catalog", { config: { products: [] } }), say("Added the Team plan.")] });
+    const live = catalogConfigSchema.parse({ products: [pack] });
+    const result = await runCatalogAgent({ model, ports: ports(live), message: "Add a Team plan" });
+    expect(result).toMatchObject({ outcome: "no_proposal", note: "Nothing would change: the draft is the live catalog." });
+  });
+});
+
+describe("keepLiveProducts", () => {
+  it("adds back a live product the proposal left out, unless the person asked to remove one", () => {
+    expect(keepLiveProducts({ products: [pro] }, { products: [pro, pack] }, ["Add a monthly plan"]).products.map((p) => p.ref)).toEqual(["pro", "credits-1000"]);
+    expect(keepLiveProducts({ products: [pro] }, { products: [pro, pack] }, ["Remove the credit pack"]).products.map((p) => p.ref)).toEqual(["pro"]);
+    expect(keepLiveProducts({ products: [pro, pack] }, null, ["Add both"]).products).toHaveLength(2);
   });
 });

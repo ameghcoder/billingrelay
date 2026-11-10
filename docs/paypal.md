@@ -71,16 +71,23 @@ The operator enters a sandbox client ID and secret at `/admin/paypal`. Nothing i
    by event ID, and effects by capture or sale ID.
 6. **Capture safety.** Capture without approval returns `422 ORDER_NOT_APPROVED`. A repeat with the same request ID returns
    the same capture. A repeat with a new request ID returns `422 ORDER_ALREADY_CAPTURED`.
-7. **Renewals run in sandbox.** There's no clock skip, but a daily plan really renews: 7 cycles completed in 7 days. A
-   monthly plan and a captured renewal webhook are still unverified.
-8. **Renewals post after the scheduled time.** With `next_billing_time` at 10:00 UTC on 4 Nov, no payment had posted by 11:41 UTC.
-   The previous payment posted at 11:32 UTC on 3 Nov. See the grace-period decision in `billing-rules.md`.
+7. **Renewals run in sandbox.** There's no clock skip, but a daily plan really renews: 13 cycles completed in 13 days. A monthly
+   plan's renewal can't be seen before the deadline.
+8. **Renewals post after the scheduled time.** The daily subscription's 13 payments (28 Oct to 9 Nov) posted between 1.5 and 6 hours after
+   `next_billing_time` (10:00 UTC). See the grace period in `billing-rules.md`.
 9. **Concurrent captures with one request ID are safe.** 20 at once on an approved order all succeeded with one capture, in two runs. No `409` for a request in flight appeared.
 10. **Capture events carry the link.** A real `PAYMENT.CAPTURE.COMPLETED` has `resource.custom_id` (our checkout ID) as well as the order ID in `related_ids`.
 11. **A refund event names its capture only through a link.** A real `PAYMENT.CAPTURE.REFUNDED` is a `refund` resource: `resource.id` is the refund, `custom_id` is our checkout ID, and
     the capture is in the `up` link, `/v2/payments/captures/<id>`. It has no order ID. Each partial refund sends its own event.
 12. **A refunded capture keeps its amount and changes its status.** After a full refund the order is still `COMPLETED`, and its capture's status is `REFUNDED` with the original amount.
 13. **Events can take over a minute.** Two refund events took about 80 seconds to appear in PayPal's own event list.
+14. **A subscription's transaction IDs are its sale IDs.** `GET /v1/billing/subscriptions/:id/transactions` lists the same ID that
+    `PAYMENT.SALE.COMPLETED` carries as `resource.id`, so either path stores one payment. The list also carries the payer's name and email,
+    which BillingRelay doesn't keep.
+15. **Creating a subscription ignores `PayPal-Request-Id`.** The same request ID sent again after a lost answer made a second subscription
+    (M09 check). Only the one stored is ever shown to the buyer; the other stays `APPROVAL_PENDING` and charges nobody.
+16. **`BILLING.SUBSCRIPTION.ACTIVATED` doesn't always come.** One run got only `PAYMENT.SALE.COMPLETED` within 6 minutes. Nothing waits on either:
+    the buyer's return and the worker read PayPal directly.
 
 ## Sandbox setup
 

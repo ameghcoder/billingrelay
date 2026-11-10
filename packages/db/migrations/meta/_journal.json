@@ -50,6 +50,13 @@
       "when": 1794065788346,
       "tag": "0006_mysterious_mentallo",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794227046313,
+      "tag": "0007_elite_the_twelve",
+      "breakpoints": true
     }
   ]
 }

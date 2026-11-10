@@ -468,6 +468,7 @@ const eventSchema = z.looseObject({
     .looseObject({
       id: z.string().optional(),
       custom_id: z.string().optional(),
+      billing_agreement_id: z.string().optional(),
       purchase_units: z.array(z.looseObject({ custom_id: z.string().optional() })).optional(),
       links: z.array(z.looseObject({ rel: z.string(), href: z.string() })).optional(),
       supplementary_data: z.looseObject({ related_ids: z.looseObject({ order_id: z.string().optional() }).optional() }).optional(),
@@ -476,10 +477,11 @@ const eventSchema = z.looseObject({
 });
 
 export type PaypalEventFacts = {
-  signal: "order_approved" | "capture_changed" | "capture_refunded" | "other";
+  signal: "order_approved" | "capture_changed" | "capture_refunded" | "subscription_changed" | "other";
   checkoutId: string | null;
   orderId: string | null;
   captureId: string | null;
+  subscriptionId: string | null;
 };
 
 const EVENT_SIGNALS = new Map<string, PaypalEventFacts["signal"]>([
@@ -487,6 +489,11 @@ const EVENT_SIGNALS = new Map<string, PaypalEventFacts["signal"]>([
   ["PAYMENT.CAPTURE.COMPLETED", "capture_changed"],
   ["PAYMENT.CAPTURE.DENIED", "capture_changed"],
   ["PAYMENT.CAPTURE.REFUNDED", "capture_refunded"],
+  ["BILLING.SUBSCRIPTION.ACTIVATED", "subscription_changed"],
+  ["BILLING.SUBSCRIPTION.CANCELLED", "subscription_changed"],
+  ["BILLING.SUBSCRIPTION.SUSPENDED", "subscription_changed"],
+  ["BILLING.SUBSCRIPTION.PAYMENT.FAILED", "subscription_changed"],
+  ["PAYMENT.SALE.COMPLETED", "subscription_changed"],
 ]);
 
 const CAPTURE_PATH = /\/v2\/payments\/captures\/([^/?#]+)/;
@@ -495,7 +502,14 @@ const CAPTURE_PATH = /\/v2\/payments\/captures\/([^/?#]+)/;
 export function readEvent(eventType: string, payload: unknown): PaypalEventFacts {
   const signal = EVENT_SIGNALS.get(eventType) ?? "other";
   const resource = eventSchema.safeParse(payload).data?.resource;
-  if (signal === "other" || !resource) return { signal, checkoutId: null, orderId: null, captureId: null };
+  if (signal === "other" || !resource) return { signal, checkoutId: null, orderId: null, captureId: null, subscriptionId: null };
+
+  // A subscription event's resource is the subscription. A sale names it in `billing_agreement_id` (the older payload shape).
+  if (signal === "subscription_changed") {
+    const subscriptionId = eventType === "PAYMENT.SALE.COMPLETED" ? (resource.billing_agreement_id ?? null) : (resource.id ?? null);
+    const checkoutId = eventType === "PAYMENT.SALE.COMPLETED" ? null : (resource.custom_id ?? null);
+    return { signal, checkoutId, orderId: null, captureId: null, subscriptionId };
+  }
 
   // A refund names its capture only through its "up" link.
   const upLink = resource.links?.find((link) => link.rel === "up")?.href;
@@ -504,5 +518,202 @@ export function readEvent(eventType: string, payload: unknown): PaypalEventFacts
     checkoutId: resource.custom_id ?? resource.purchase_units?.[0]?.custom_id ?? null,
     orderId: signal === "order_approved" ? (resource.id ?? null) : (resource.supplementary_data?.related_ids?.order_id ?? null),
     captureId: signal === "capture_refunded" ? (upLink?.match(CAPTURE_PATH)?.[1] ?? null) : null,
+    subscriptionId: null,
   };
+}
+
+// Subscriptions. A plan's price is fixed: a new price is a new plan, so a subscriber's price never changes under them.
+
+const PLAN_PATH = "/v1/billing/plans";
+const SUBSCRIPTIONS_PATH = "/v1/billing/subscriptions";
+const subscriptionPath = (id: string) => `${SUBSCRIPTIONS_PATH}/${encodeURIComponent(id)}`;
+const requestHeaders = (requestId: string): HeadersInit => ({ "PayPal-Request-Id": requestId, Prefer: "return=representation" });
+
+export type NewPaypalPlan = { requestKey: string; productName: string; planName: string; amount: number; currency: string };
+
+/**
+ * A PayPal product and a monthly plan for one price. Callers store the IDs and only come here when they have none. The request
+ * IDs are sent, but PayPal's billing APIs were seen not to honour them, so a lost answer can leave an unused plan behind.
+ */
+export async function createMonthlyPlan(session: PaypalSession, plan: NewPaypalPlan): Promise<{ productId: string; planId: string }> {
+  const created = z.looseObject({ id: z.string() });
+  const product = await parse(
+    await send(
+      session.environment,
+      "/v1/catalogs/products",
+      authorized(session, {
+        method: "POST",
+        headers: requestHeaders(`product-${plan.requestKey}`),
+        body: JSON.stringify({ name: plan.productName.slice(0, 127), type: "SERVICE" }),
+      }),
+    ),
+    created,
+  );
+  const billingPlan = await parse(
+    await send(
+      session.environment,
+      PLAN_PATH,
+      authorized(session, {
+        method: "POST",
+        headers: requestHeaders(`plan-${plan.requestKey}`),
+        body: JSON.stringify({
+          product_id: product.id,
+          name: plan.planName.slice(0, 127),
+          status: "ACTIVE",
+          billing_cycles: [
+            {
+              frequency: { interval_unit: "MONTH", interval_count: 1 },
+              tenure_type: "REGULAR",
+              sequence: 1,
+              total_cycles: 0,
+              pricing_scheme: { fixed_price: { value: toPaypalValue(plan.amount), currency_code: plan.currency } },
+            },
+          ],
+          // A failed renewal suspends at once: no unpaid month is ever given.
+          payment_preferences: { auto_bill_outstanding: true, payment_failure_threshold: 1 },
+        }),
+      }),
+    ),
+    created,
+  );
+  return { productId: product.id, planId: billingPlan.id };
+}
+
+const subscriptionSchema = z.looseObject({
+  id: z.string(),
+  status: z.string(),
+  plan_id: z.string().optional(),
+  custom_id: z.string().optional(),
+  links: z.array(z.looseObject({ rel: z.string(), href: z.string() })).optional(),
+  billing_info: z.looseObject({ next_billing_time: z.string().optional() }).optional(),
+});
+
+export type PaypalSubscription = {
+  id: string;
+  stage: "waiting_for_buyer" | "active" | "suspended" | "cancelled" | "expired" | "other";
+  planId: string | null;
+  customId: string | null;
+  nextBillingTime: Date | null;
+  approvalUrl: string | null;
+};
+
+const SUBSCRIPTION_STAGES = new Map<string, PaypalSubscription["stage"]>([
+  ["APPROVAL_PENDING", "waiting_for_buyer"],
+  // Approved but not active yet: PayPal is still taking the first payment.
+  ["APPROVED", "other"],
+  ["ACTIVE", "active"],
+  ["SUSPENDED", "suspended"],
+  ["CANCELLED", "cancelled"],
+  ["EXPIRED", "expired"],
+]);
+
+/** Exported so tests can read PayPal's real payloads through the same code. */
+export function toSubscription(body: unknown): PaypalSubscription {
+  const parsed = subscriptionSchema.safeParse(body);
+  if (!parsed.success) throw new PaypalError("unavailable", "unexpected_response");
+  const next = parsed.data.billing_info?.next_billing_time;
+  const nextDate = next ? new Date(next) : null;
+  return {
+    id: parsed.data.id,
+    stage: SUBSCRIPTION_STAGES.get(parsed.data.status) ?? "other",
+    planId: parsed.data.plan_id ?? null,
+    customId: parsed.data.custom_id ?? null,
+    nextBillingTime: nextDate && !Number.isNaN(nextDate.getTime()) ? nextDate : null,
+    approvalUrl: parsed.data.links?.find((link) => link.rel === "approve")?.href ?? null,
+  };
+}
+
+const readSubscription = async (response: Response) => toSubscription(await response.json().catch(() => null));
+
+export type NewPaypalSubscription = { requestId: string; planId: string; customId: string; returnUrl: string; cancelUrl: string };
+
+/**
+ * Nothing is charged until the buyer approves it at PayPal. A repeated `requestId` made a second subscription in sandbox, so a lost
+ * answer leaves one nobody can approve: its link is never handed out.
+ */
+export async function createSubscription(session: PaypalSession, subscription: NewPaypalSubscription): Promise<PaypalSubscription> {
+  const response = await send(
+    session.environment,
+    SUBSCRIPTIONS_PATH,
+    authorized(session, {
+      method: "POST",
+      headers: requestHeaders(subscription.requestId),
+      body: JSON.stringify({
+        plan_id: subscription.planId,
+        custom_id: subscription.customId,
+        application_context: {
+          user_action: "SUBSCRIBE_NOW",
+          shipping_preference: "NO_SHIPPING",
+          return_url: subscription.returnUrl,
+          cancel_url: subscription.cancelUrl,
+        },
+      }),
+    }),
+  );
+  return readSubscription(response);
+}
+
+export async function getSubscription(session: PaypalSession, subscriptionId: string): Promise<PaypalSubscription> {
+  return readSubscription(await send(session.environment, subscriptionPath(subscriptionId), authorized(session)));
+}
+
+const transactionsSchema = z.looseObject({
+  transactions: z
+    .array(
+      z.looseObject({
+        id: z.string(),
+        status: z.string(),
+        time: z.string(),
+        amount_with_breakdown: z.looseObject({ gross_amount: moneySchema }),
+      }),
+    )
+    .optional(),
+});
+
+export type PaypalSubscriptionPayment = {
+  id: string;
+  state: "completed" | "refunded" | "other";
+  amount: number | null;
+  currency: string;
+  paidAt: Date;
+};
+
+const PAYMENT_STATES = new Map<string, PaypalSubscriptionPayment["state"]>([
+  ["COMPLETED", "completed"],
+  ["REFUNDED", "refunded"],
+  ["PARTIALLY_REFUNDED", "refunded"],
+]);
+
+/** Exported so tests can read PayPal's real payloads through the same code. */
+export function toSubscriptionPayments(body: unknown): PaypalSubscriptionPayment[] {
+  const parsed = transactionsSchema.safeParse(body);
+  if (!parsed.success) throw new PaypalError("unavailable", "unexpected_response");
+  return (parsed.data.transactions ?? []).map((transaction) => ({
+    id: transaction.id,
+    state: PAYMENT_STATES.get(transaction.status) ?? "other",
+    amount: fromPaypalValue(transaction.amount_with_breakdown.gross_amount.value),
+    currency: transaction.amount_with_breakdown.gross_amount.currency_code,
+    paidAt: new Date(transaction.time),
+  }));
+}
+
+/** Every payment PayPal has taken for this subscription between the two times. */
+export async function listSubscriptionPayments(session: PaypalSession, subscriptionId: string, from: Date, to: Date): Promise<PaypalSubscriptionPayment[]> {
+  const query = new URLSearchParams({ start_time: from.toISOString(), end_time: to.toISOString() });
+  const response = await send(session.environment, `${subscriptionPath(subscriptionId)}/transactions?${query}`, authorized(session));
+  return toSubscriptionPayments(await response.json().catch(() => null));
+}
+
+/** Stops future renewals. Already cancelled or expired counts as done: the caller reads the subscription afterwards either way. */
+export async function cancelSubscription(session: PaypalSession, subscriptionId: string): Promise<void> {
+  try {
+    await send(
+      session.environment,
+      `${subscriptionPath(subscriptionId)}/cancel`,
+      authorized(session, { method: "POST", body: JSON.stringify({ reason: "Cancelled by the customer" }) }),
+    );
+  } catch (error) {
+    if (error instanceof PaypalError && error.issue === "SUBSCRIPTION_STATUS_INVALID") return;
+    throw error;
+  }
 }

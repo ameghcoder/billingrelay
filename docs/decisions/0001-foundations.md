@@ -52,3 +52,10 @@ Status: accepted, 2026-10-28 to 2026-11-05.
     migrates on deploy, so a migration is always a step someone chose. Render's health check isn't used for routing, because health includes the worker.
 34. **A TLS destination's CA is a file named in the URL (`sslrootcert`), not code.** On Render it's a secret file. node-postgres reads it
     the same way everywhere, and the worker still refuses any URL without verified TLS.
+35. **A subscription's facts come from PayPal's subscription and its transaction list, never from an event.** Every path (event, return,
+    worker) runs the same read, and one row per sale ID makes repeats harmless. Access ends by time (`active_until`), so no job has to run.
+36. **Plans are made at PayPal the first time anyone buys at a price, not when a catalog goes live.** Going live stays a database step, and a
+    new price is a new plan, so no subscriber's price changes. PayPal's subscription APIs didn't honour `PayPal-Request-Id` in sandbox, so a
+    lost answer can leave an unused plan or an unapproved subscription at PayPal. Neither can charge anyone: no buyer ever gets its link.
+37. **Access runs 24 hours past PayPal's next billing time, and late approvals are honoured.** Renewals post hours late, and PayPal charges
+    when the buyer approves, whatever our checkout's hour says.

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { subscriptionSummarySchema } from "./subscriptions";
 import { catalogQuoteRequestSchema, externalCustomerIdSchema, quoteSnapshotSchema } from "./quotes";
 import { CHECKOUT_SYNC_STATUSES } from "./sync";
 
@@ -88,6 +89,8 @@ export const checkoutResponseSchema = z.object({
   nextAction: nextActionSchema,
   snapshot: quoteSnapshotSchema,
   paypal: z.object({ orderId: z.string().nullable(), captureId: z.string().nullable() }),
+  // A subscription checkout's subscription, once the buyer has clicked Pay. Null for everything else.
+  subscription: subscriptionSummarySchema.nullable(),
 });
 export type CheckoutResponse = z.infer<typeof checkoutResponseSchema>;
 

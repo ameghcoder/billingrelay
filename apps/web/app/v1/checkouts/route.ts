@@ -30,7 +30,7 @@ const quoteUsed = (checkoutId: string) =>
 
 async function fixedPrice(scope: ProjectScope, request: Exclude<ReturnType<typeof parseCheckoutRequest>["data"], undefined>) {
   if (!("quoteId" in request)) {
-    const built = buildQuoteSnapshot(request, await getActiveCatalog(scope));
+    const built = buildQuoteSnapshot(request, await getActiveCatalog(scope), { allowSubscription: true });
     return "refusal" in built ? { failure: apiError(422, built.refusal.code, built.refusal.message) } : { snapshot: built.snapshot };
   }
 
@@ -72,10 +72,13 @@ export const POST = withApiKey(async ({ request, apiKey }) => {
   // Capabilities survive a failed check. Refuse here, because a checkout that can't be paid would use up its quote for good.
   const cantLogIn = connection?.lastCheck === "credentials_rejected" || connection?.lastCheck === "secret_unreadable";
   if (!connection?.capabilities?.checkout || cantLogIn) return apiError(422, "paypal_not_connected", "Connect PayPal, with the checkout capability, first");
+  if (priced.snapshot.product.kind === "subscription" && !connection.capabilities.subscriptions) {
+    return apiError(422, "paypal_not_connected", "This PayPal app doesn't have the subscriptions capability");
+  }
   if (!publicOrigin()) return apiError(422, "public_url_invalid", "PUBLIC_BASE_URL must be an https URL");
 
   const quoteId = "quoteId" in parsed.data ? parsed.data.quoteId : null;
-  const createdId = await createCheckout({
+  const created = await createCheckout({
     ...scope,
     apiKeyId,
     externalCustomerId: parsed.data.externalCustomerId,
@@ -86,7 +89,10 @@ export const POST = withApiKey(async ({ request, apiKey }) => {
     snapshot: priced.snapshot,
     lifetimeSeconds: CHECKOUT_LIFETIME_SECONDS,
   });
-  if (createdId) return jsonResponse(await toCheckoutResponse((await getCheckout(scope, createdId))!), 201);
+  if (created.status === "created") return jsonResponse(await toCheckoutResponse((await getCheckout(scope, created.id))!), 201);
+  if (created.status === "subscription_exists") {
+    return apiError(409, "subscription_exists", "This customer already has this subscription, or is starting it", { checkoutId: created.checkoutId });
+  }
 
   // Another request got in after the lookups above, with this key or for this quote.
   const winner = await findCheckoutByKey(scope, idempotencyKey.data);

@@ -35,6 +35,7 @@ async function grantAccess(tx: Tx, checkoutId: string, paid: PaidCheckout, acces
 }
 
 /**
+ * A subscription's benefits come from its payments instead (`recordSubscriptionState`).
  * Applies what the snapshot says, once, in one transaction with the status and outbox rows. The row lock means
  * this and a refund happen one after the other, and the WHERE means a refund that came first stops this.
  */
@@ -44,6 +45,7 @@ export async function applyCheckoutBenefits(id: string): Promise<void> {
       SELECT project_id, environment, customer_id, paypal_capture_id, snapshot
       FROM checkout
       WHERE id = ${id} AND money_status = 'captured' AND fulfillment_status = 'pending' AND fulfillment_reason IS NULL
+        AND snapshot->'product'->>'kind' <> 'subscription'
       FOR UPDATE`);
     const paid = rows[0];
     if (!paid) return;

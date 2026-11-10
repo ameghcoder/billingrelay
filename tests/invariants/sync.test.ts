@@ -2,6 +2,7 @@
 // and runs the real setup command, so it only runs on throwaway databases, with no worker running.
 // Needs DATABASE_URL (source) and DESTINATION_OWNER_URL (an owner of the destination server, able to create databases and roles).
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,10 +24,14 @@ import {
   retrySyncNow,
   startSyncStatus,
   applyCheckoutBenefits,
+  createCheckout,
+  recordSubscriptionState,
   restrictRefundedCheckout,
+  saveSubscription,
 } from "../../packages/db/src/index";
 import { getSourcePool } from "../../packages/db/src/client";
 import { checkDestination, closeDestination, deliver, openDestination, type Destination } from "../../packages/sync-postgres/src/index";
+import { SCHEMA_VERSION } from "../../packages/sync-postgres/src/destination";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const db = () => getSourcePool();
@@ -104,7 +109,7 @@ describe.runIf(process.env.E2E_WRITE_DB === "1" && !!process.env.DESTINATION_OWN
   const outboxFor = (id: string) =>
     db().query<{ id: string; source_version: number; status: string; attempts: number; failure_code: string | null }>(
       "SELECT id, source_version, status, attempts, failure_code FROM outbox WHERE entity_id = $1 ORDER BY source_version", [id]);
-  const destinationRow = async (table: "purchases" | "access", key: string, id: string) =>
+  const destinationRow = async (table: "purchases" | "access" | "subscriptions", key: string, id: string) =>
     (await owner.query(`SELECT * FROM billingrelay.${table} WHERE ${key} = $1`, [id])).rows[0];
   // Only this test's rows: anything another test left behind is already marked delivered.
   const settleOtherRows = () => db().query("UPDATE outbox SET status = 'delivered' WHERE status <> 'delivered'");
@@ -140,12 +145,27 @@ describe.runIf(process.env.E2E_WRITE_DB === "1" && !!process.env.DESTINATION_OWN
       const first = setup(database);
       expect(first.status).toBe(0);
       expect(first.stdout).toContain("Applied 001_initial.sql");
+      expect(first.stdout).toContain("Applied 002_subscriptions.sql");
       const tables = () => inDatabase(database, async (c) => (await c.query("SELECT string_agg(table_name, ',' ORDER BY table_name) AS t FROM information_schema.tables WHERE table_schema = 'billingrelay'")).rows[0].t);
-      expect(await tables()).toBe("access,customers,purchases,schema_version");
+      expect(await tables()).toBe("access,customers,purchases,schema_version,subscriptions");
       const second = setup(database);
       expect(second.status).toBe(0);
       expect(second.stdout).not.toContain("Applied");
-      expect(await tables()).toBe("access,customers,purchases,schema_version");
+      expect(await tables()).toBe("access,customers,purchases,schema_version,subscriptions");
+    });
+
+    it("upgrades a version 1 destination in place, keeping its rows", async () => {
+      const database = await freshDatabase();
+      const first = readFileSync(join(REPO, "packages/sync-postgres/migrations/001_initial.sql"), "utf8");
+      await inDatabase(database, async (c) => {
+        await c.query(first);
+        await c.query("INSERT INTO billingrelay.customers (project_id, customer_id, external_customer_id) VALUES (gen_random_uuid(), gen_random_uuid(), 'kept')");
+      });
+      const result = setup(database);
+      expect(result.status).toBe(0);
+      expect(result.stdout).not.toContain("001_initial.sql");
+      expect(result.stdout).toContain("Applied 002_subscriptions.sql");
+      expect(await inDatabase(database, async (c) => (await c.query("SELECT external_customer_id AS id FROM billingrelay.customers")).rows[0].id)).toBe("kept");
     });
 
     it("stops at a billingrelay schema it didn't make, and leaves it exactly as it was", async () => {
@@ -165,7 +185,7 @@ describe.runIf(process.env.E2E_WRITE_DB === "1" && !!process.env.DESTINATION_OWN
     it("refuses a destination newer than this code", async () => {
       const database = await freshDatabase();
       expect(setup(database).status).toBe(0);
-      await inDatabase(database, (c) => c.query("INSERT INTO billingrelay.schema_version (version) VALUES (2)"));
+      await inDatabase(database, (c) => c.query(`INSERT INTO billingrelay.schema_version (version) VALUES (${SCHEMA_VERSION + 1})`));
       const result = setup(database);
       expect(result.status).toBe(1);
       expect(result.stderr).toContain("newer than this code");
@@ -213,6 +233,40 @@ describe.runIf(process.env.E2E_WRITE_DB === "1" && !!process.env.DESTINATION_OWN
   });
 
   describe("delivery", () => {
+    it("a subscription and its access reach the destination, with when access ends, and a renewal moves it", async () => {
+      await settleOtherRows();
+      const snapshot = {
+        source: "catalog", catalogVersion: 1, product: { ref: "sync-pro", name: "Pro", kind: "subscription" }, variant: { ref: "monthly", name: "Monthly", attributes: {} },
+        quantity: 1, unitAmount: 900, amount: 900, currency: "USD", benefits: [{ kind: "access", key: "pro" }], metadata: {},
+      };
+      const created = await createCheckout({
+        projectId, environment: "sandbox", apiKeyId, externalCustomerId: `sub-${randomUUID()}`, quoteId: null, idempotencyKey: `sync-sub-${randomUUID()}`,
+        payloadHash: "x", returnUrl: "https://a.example/r", snapshot: snapshot as never, lifetimeSeconds: 3600,
+      });
+      if (created.status !== "created") throw new Error("not created");
+      const subscription = await saveSubscription({ checkoutId: created.id, paypalPlanId: "P-SYNC", paypalSubscriptionId: `I-${randomUUID()}` });
+      const paidThrough = new Date(Date.now() + 30 * 86_400_000);
+      const state = { status: "active" as const, approved: true, mismatch: null, nextCheckAt: null };
+      await recordSubscriptionState(subscription.id, { ...state, nextBillingTime: paidThrough, payments: [{ paypalSaleId: `S1-${subscription.id}`, amount: 900, currency: "USD", paidAt: new Date(), outcome: "counts" }] });
+      await pass();
+
+      const copied = await destinationRow("subscriptions", "subscription_id", subscription.id);
+      expect(copied).toMatchObject({ status: "active", product_ref: "sync-pro", cancel_requested: false, review_reason: null });
+      expect(new Date(copied.paid_through).getTime()).toBe(paidThrough.getTime());
+      const access = (await owner.query("SELECT * FROM billingrelay.access WHERE checkout_id = $1", [created.id])).rows[0];
+      expect(new Date(access.active_until).getTime()).toBe(paidThrough.getTime() + 86_400_000);
+      expect((await destinationRow("purchases", "checkout_id", created.id)).money_status).toBe("captured");
+
+      const renewedThrough = new Date(paidThrough.getTime() + 30 * 86_400_000);
+      await recordSubscriptionState(subscription.id, { ...state, nextBillingTime: renewedThrough, payments: [{ paypalSaleId: `S2-${subscription.id}`, amount: 900, currency: "USD", paidAt: paidThrough, outcome: "counts" }] });
+      await pass();
+      const renewed = (await owner.query("SELECT * FROM billingrelay.access WHERE checkout_id = $1", [created.id])).rows[0];
+      expect(new Date(renewed.active_until).getTime()).toBe(renewedThrough.getTime() + 86_400_000);
+      // The old version arriving late changes nothing.
+      const old = { entityType: "access_grant" as const, row: { ...(await loadProjection("access_grant", access.grant_id))!.row, sourceVersion: 1, activeUntil: new Date(0) } };
+      expect(await deliver(destination, old as never)).toBe("unchanged");
+    });
+
     it("copies a fixed shape with nothing that names the buyer", async () => {
       const id = await newCheckout();
       await capture(id);

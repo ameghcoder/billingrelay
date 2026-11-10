@@ -1,8 +1,9 @@
-import { handleEvent, recheckPayment, type EventOutcome } from "@billingrelay/billing";
+import { handleEvent, recheckPayment, recheckSubscription, type EventOutcome } from "@billingrelay/billing";
 import {
   applyCheckoutBenefits,
   claimCheckoutForBenefits,
   claimPaypalEvent,
+  claimSubscriptionForCheck,
   claimUnclearCheckout,
   failAbandonedPaypalEvents,
   finishPaypalEvent,
@@ -34,13 +35,13 @@ async function runEvent(event: ClaimedPaypalEvent): Promise<void> {
   console.log(`Event ${event.id} ${event.eventType}: ${outcome.status}`);
 }
 
-/** The claim already moved the checkout's next look back, so a failure here just waits for that. */
-async function runCheckout(label: string, checkoutId: string, work: (id: string) => Promise<void>): Promise<void> {
+/** The claim already moved the record's next look back, so a failure here just waits for that. */
+async function runCheck(record: "Checkout" | "Subscription", label: string, id: string, work: (id: string) => Promise<void>): Promise<void> {
   try {
-    await work(checkoutId);
-    console.log(`Checkout ${checkoutId}: ${label} checked`);
+    await work(id);
+    console.log(`${record} ${id}: ${label} checked`);
   } catch (error) {
-    console.error(`Checkout ${checkoutId}: ${label} failed: ${describe(error)}`);
+    console.error(`${record} ${id}: ${label} failed: ${describe(error)}`);
   }
 }
 
@@ -56,6 +57,7 @@ async function drain<T>(shouldStop: () => boolean, claim: () => Promise<T | null
 export async function runPass(shouldStop: () => boolean): Promise<void> {
   await failAbandonedPaypalEvents();
   await drain(shouldStop, claimPaypalEvent, runEvent);
-  await drain(shouldStop, claimCheckoutForBenefits, (id) => runCheckout("benefits", id, applyCheckoutBenefits));
-  await drain(shouldStop, claimUnclearCheckout, (id) => runCheckout("unclear payment", id, recheckPayment));
+  await drain(shouldStop, claimCheckoutForBenefits, (id) => runCheck("Checkout", "benefits", id, applyCheckoutBenefits));
+  await drain(shouldStop, claimUnclearCheckout, (id) => runCheck("Checkout", "unclear payment", id, recheckPayment));
+  await drain(shouldStop, claimSubscriptionForCheck, (id) => runCheck("Subscription", "renewal", id, recheckSubscription));
 }

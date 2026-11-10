@@ -199,6 +199,7 @@ describe("readEvent", () => {
       checkoutId: "01a1af4b-5593-7712-8267-840fa1ad3760",
       orderId: "8A522041TA517552K",
       captureId: null,
+      subscriptionId: null,
     });
   });
 
@@ -208,6 +209,7 @@ describe("readEvent", () => {
       checkoutId: "01a1af4b-5593-7712-8267-840fa1ad3760",
       orderId: "8A522041TA517552K",
       captureId: null,
+      subscriptionId: null,
     });
   });
 
@@ -217,6 +219,7 @@ describe("readEvent", () => {
       checkoutId: "01a1af43-ce2b-7092-8ad5-0feb71f153f2",
       orderId: null,
       captureId: "8K996419ET0148626",
+      subscriptionId: null,
     });
   });
 
@@ -225,11 +228,14 @@ describe("readEvent", () => {
     expect(readEvent("PAYMENT.CAPTURE.REFUNDED", { resource }).captureId).toBeNull();
   });
 
-  it.each([
-    ["BILLING.SUBSCRIPTION.ACTIVATED", { resource: { id: "I-1", custom_id: "x" } }],
-    ["SOMETHING.NEW", REAL_EVENTS.captured],
-  ])("%s is not acted on", (type, payload) => {
-    expect(readEvent(type, payload)).toEqual({ signal: "other", checkoutId: null, orderId: null, captureId: null });
+  it("a type we don't handle is not acted on", () => {
+    expect(readEvent("SOMETHING.NEW", REAL_EVENTS.captured)).toEqual({
+      signal: "other",
+      checkoutId: null,
+      orderId: null,
+      captureId: null,
+      subscriptionId: null,
+    });
   });
 
   it.each([[null], ["text"], [{}], [{ resource: "text" }], [{ resource: { custom_id: 5 } }]])("%j names nothing, and doesn't throw", (payload) => {

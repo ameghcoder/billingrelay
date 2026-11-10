@@ -1,5 +1,5 @@
 import { formatPrice } from "@billingrelay/core/catalog";
-import { findCheckout } from "@billingrelay/db";
+import { findCheckout, findSubscriptionByCheckout } from "@billingrelay/db";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
@@ -26,6 +26,8 @@ export async function HostedCheckout({ id, returning, cancelled }: { id: string;
   if (!checkout || checkout.environment !== "sandbox") notFound();
 
   const { snapshot } = checkout;
+  const monthly = snapshot.product.kind === "subscription";
+  const startedAtPaypal = checkout.paypalOrderId !== null || (monthly && (await findSubscriptionByCheckout(checkout.id)) !== null);
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4 py-8">
       <CheckoutPanel
@@ -35,9 +37,10 @@ export async function HostedCheckout({ id, returning, cancelled }: { id: string;
           variantName: snapshot.variant?.name ?? null,
           quantity: snapshot.quantity,
           total: formatPrice(snapshot.amount, snapshot.currency),
+          monthly,
         }}
         initial={toPublicCheckout(checkout)}
-        hasOrder={checkout.paypalOrderId !== null}
+        hasOrder={startedAtPaypal}
         returning={returning}
         cancelled={cancelled}
       />

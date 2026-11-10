@@ -1,6 +1,7 @@
 import type { CatalogConfig } from "@billingrelay/core/catalog";
 import type { FulfillmentReason, FulfillmentStatus, MoneyReason, StoredMoneyStatus } from "@billingrelay/core/checkouts";
 import type { QuoteSnapshot } from "@billingrelay/core/quotes";
+import type { SubscriptionReviewReason, SubscriptionStatus } from "@billingrelay/core/subscriptions";
 import type { DestinationState, OutboxStatus, SyncOutcome } from "@billingrelay/core/sync";
 import { sql } from "drizzle-orm";
 import { boolean, check, index, integer, json, jsonb, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
@@ -346,6 +347,9 @@ export const accessGrant = pgTable(
       .notNull()
       .references(() => checkout.id),
     paypalPaymentId: text("paypal_payment_id").notNull(),
+    // A subscription's one grant. Each counted payment moves `active_until` forward; empty for a one-time purchase, which doesn't end.
+    subscriptionId: uuid("subscription_id").references(() => subscription.id),
+    activeUntil: timestamp("active_until", { withTimezone: true }),
     status: text("status").$type<"active" | "restricted">().notNull().default("active"),
     sourceVersion: integer("source_version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -356,6 +360,7 @@ export const accessGrant = pgTable(
     check("access_grant_status_check", sql`${table.status} IN ('active', 'restricted')`),
     index("access_grant_customer_idx").on(table.projectId, table.environment, table.customerId),
     index("access_grant_checkout_idx").on(table.checkoutId),
+    unique("access_grant_subscription_unique").on(table.subscriptionId),
   ],
 );
 
@@ -368,7 +373,7 @@ export const outbox = pgTable(
     projectId: uuid("project_id")
       .notNull()
       .references(() => project.id),
-    entityType: text("entity_type").$type<"checkout" | "access_grant">().notNull(),
+    entityType: text("entity_type").$type<"checkout" | "access_grant" | "subscription">().notNull(),
     entityId: uuid("entity_id").notNull(),
     sourceVersion: integer("source_version").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -380,7 +385,7 @@ export const outbox = pgTable(
   },
   (table) => [
     unique("outbox_entity_version_unique").on(table.entityType, table.entityId, table.sourceVersion),
-    check("outbox_entity_type_check", sql`${table.entityType} IN ('checkout', 'access_grant')`),
+    check("outbox_entity_type_check", sql`${table.entityType} IN ('checkout', 'access_grant', 'subscription')`),
     check("outbox_status_check", sql`${table.status} IN ('pending', 'delivered', 'failed')`),
     index("outbox_due_idx").on(table.nextAttemptAt).where(sql`${table.status} = 'pending'`),
   ],
@@ -422,6 +427,88 @@ export const syncStatus = pgTable(
     check("sync_status_single_row", sql`${table.id} = 1`),
     check("sync_status_state_check", sql`${table.state} IN ('not_configured', 'checking', 'ok', 'down', 'not_ready')`),
   ],
+);
+
+// One PayPal product and monthly plan per price. A new price is a new plan, so no subscriber's price changes under them.
+export const paypalPlan = pgTable(
+  "paypal_plan",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    connectionId: uuid("connection_id")
+      .notNull()
+      .references(() => paypalConnection.id),
+    productRef: text("product_ref").notNull(),
+    variantRef: text("variant_ref").notNull(),
+    amount: integer("amount").notNull(),
+    currency: text("currency").notNull(),
+    paypalProductId: text("paypal_product_id").notNull(),
+    paypalPlanId: text("paypal_plan_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("paypal_plan_price_unique").on(table.connectionId, table.productRef, table.variantRef, table.amount, table.currency)],
+);
+
+// One per subscription checkout, made when the buyer clicks Pay. PayPal's status is stored as read; access comes from `paid_through`.
+export const subscription = pgTable(
+  "subscription",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id),
+    environment: text("environment").$type<"sandbox" | "live">().notNull(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customer.id),
+    checkoutId: uuid("checkout_id")
+      .notNull()
+      .references(() => checkout.id),
+    productRef: text("product_ref").notNull(),
+    paypalPlanId: text("paypal_plan_id").notNull(),
+    paypalSubscriptionId: text("paypal_subscription_id").notNull(),
+    status: text("status").$type<SubscriptionStatus>().notNull().default("pending"),
+    reviewReason: text("review_reason").$type<SubscriptionReviewReason>(),
+    // PayPal's next billing time after the last counted payment. Access lasts 24 hours past it.
+    paidThrough: timestamp("paid_through", { withTimezone: true }),
+    nextBillingTime: timestamp("next_billing_time", { withTimezone: true }),
+    cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }),
+    sourceVersion: integer("source_version").notNull().default(1),
+    // When the worker asks PayPal again with no event, in case a renewal's event never comes.
+    nextCheckAt: timestamp("next_check_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("subscription_checkout_unique").on(table.checkoutId),
+    unique("subscription_paypal_unique").on(table.paypalSubscriptionId),
+    check("subscription_environment_check", sql`${table.environment} IN ('sandbox', 'live')`),
+    check("subscription_status_check", sql`${table.status} IN ('pending', 'active', 'suspended', 'cancelled', 'expired')`),
+    check(
+      "subscription_review_reason_check",
+      sql`${table.reviewReason} IN ('reference_mismatch', 'plan_mismatch', 'amount_mismatch', 'currency_mismatch')`,
+    ),
+    index("subscription_customer_idx").on(table.projectId, table.environment, table.customerId, table.productRef),
+    index("subscription_due_idx").on(table.nextCheckAt).where(sql`${table.nextCheckAt} IS NOT NULL`),
+  ],
+);
+
+// One row per PayPal sale: the "one effect per payment" for subscriptions. A sale ID is also the transaction ID PayPal lists.
+export const subscriptionPayment = pgTable(
+  "subscription_payment",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    subscriptionId: uuid("subscription_id")
+      .notNull()
+      .references(() => subscription.id),
+    paypalSaleId: text("paypal_sale_id").notNull(),
+    amount: integer("amount"),
+    currency: text("currency").notNull(),
+    paidAt: timestamp("paid_at", { withTimezone: true }).notNull(),
+    // `counts`, or why it didn't pay for a period.
+    outcome: text("outcome").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("subscription_payment_sale_unique").on(table.paypalSaleId), index("subscription_payment_subscription_idx").on(table.subscriptionId)],
 );
 
 export type PaypalEventStatus = "pending" | "processed" | "ignored" | "failed";

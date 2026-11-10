@@ -7,6 +7,8 @@ import { ensureCustomer } from "./customers";
 import { retryDelay } from "./retry-delay";
 import { checkout, customer, type ProjectScope } from "./schema";
 
+type Transaction = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
+
 const FIRST_CHECK_AFTER_CAPTURE_SECONDS = 30;
 // 5s, 30s, 2m, 10m, then hourly: about 24 hours.
 const MAX_UNCLEAR_CHECKS = 28;
@@ -88,9 +90,30 @@ export async function findCheckoutIdByQuote(scope: ProjectScope, quoteId: string
   return row?.id ?? null;
 }
 
+export type CreateCheckoutResult = { status: "created"; id: string } | { status: "taken" } | { status: "subscription_exists"; checkoutId: string };
+
 /**
- * Stores the customer (if new) and the checkout together. Returns null if this key or this quote
- * is already taken, and rolls back so a new customer in this request leaves no row behind.
+ * A subscription this customer already pays for, or is starting, for the same product. Cancelled, expired or
+ * left unapproved past its hour, it no longer counts. Runs with the customer's row locked.
+ */
+async function findWantedSubscription(tx: Transaction, customerId: string, productRef: string): Promise<string | null> {
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    SELECT c.id FROM checkout c
+    LEFT JOIN subscription s ON s.checkout_id = c.id
+    WHERE c.customer_id = ${customerId}
+      AND c.snapshot->'product'->>'kind' = 'subscription'
+      AND c.snapshot->'product'->>'ref' = ${productRef}
+      AND (s.status IN ('active', 'suspended')
+           OR (COALESCE(s.status, 'pending') = 'pending' AND c.money_status IN ('pending', 'approved') AND c.expires_at > now()))
+    ORDER BY c.created_at DESC
+    LIMIT 1`);
+  return rows[0]?.id ?? null;
+}
+
+/**
+ * Stores the customer (if new) and the checkout together. `taken` if this key or this quote is already used, and
+ * rolls back so a new customer in this request leaves no row behind. A subscription locks the customer's row, so two
+ * requests at once can't both start one.
  */
 export async function createCheckout(
   values: ProjectScope & {
@@ -103,11 +126,16 @@ export async function createCheckout(
     snapshot: QuoteSnapshot;
     lifetimeSeconds: number;
   },
-): Promise<string | null> {
+): Promise<CreateCheckoutResult> {
   const { projectId, externalCustomerId, lifetimeSeconds, ...row } = values;
   try {
-    return await getDb().transaction(async (tx) => {
+    return await getDb().transaction(async (tx): Promise<CreateCheckoutResult> => {
       const customerId = await ensureCustomer(tx, projectId, externalCustomerId);
+      if (row.snapshot.product.kind === "subscription") {
+        await tx.execute(sql`SELECT id FROM customer WHERE id = ${customerId} FOR UPDATE`);
+        const existing = await findWantedSubscription(tx, customerId, row.snapshot.product.ref);
+        if (existing) return { status: "subscription_exists", checkoutId: existing };
+      }
       const [created] = await tx
         .insert(checkout)
         .values({ ...row, projectId, customerId, expiresAt: sql`now() + make_interval(secs => ${lifetimeSeconds})` })
@@ -115,10 +143,10 @@ export async function createCheckout(
         .onConflictDoNothing()
         .returning({ id: checkout.id });
       if (!created) return tx.rollback();
-      return created.id;
+      return { status: "created", id: created.id };
     });
   } catch (error) {
-    if (error instanceof TransactionRollbackError) return null;
+    if (error instanceof TransactionRollbackError) return { status: "taken" };
     throw error;
   }
 }
@@ -210,7 +238,8 @@ const claimCheckout = async (needsWork: SQL): Promise<string | null> => {
 };
 
 /** Money arrived and its benefits haven't been applied: the buyer's own confirm, or a crash between the two steps. */
-export const claimCheckoutForBenefits = () => claimCheckout(sql`money_status = 'captured' AND fulfillment_reason IS NULL`);
+export const claimCheckoutForBenefits = () =>
+  claimCheckout(sql`money_status = 'captured' AND fulfillment_reason IS NULL AND snapshot->'product'->>'kind' <> 'subscription'`);
 
 /** A capture was sent and its outcome isn't known. Gives up after about a day, and stays visible for a person. */
 export const claimUnclearCheckout = () =>

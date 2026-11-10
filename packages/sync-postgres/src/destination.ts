@@ -1,10 +1,10 @@
-import type { AccessProjection, Projection, PurchaseProjection } from "@billingrelay/core/sync";
+import type { AccessProjection, Projection, PurchaseProjection, SubscriptionProjection } from "@billingrelay/core/sync";
 import pg from "pg";
 import { classifyDestinationError, type DestinationFailure } from "./errors";
 import { destinationUrlProblem } from "./tls";
 
 /** The version of `migrations/` this code writes to. The worker delivers nothing to any other. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 const POOL_SETTINGS = {
   max: 2,
@@ -68,18 +68,42 @@ const upsertAccess = (row: AccessProjection) => ({
   text: `
     INSERT INTO billingrelay.access AS a
       (project_id, grant_id, environment, customer_id, external_customer_id, access_key, checkout_id, status,
-       source_version, source_updated_at, synced_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+       source_version, source_updated_at, active_until, synced_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
     ON CONFLICT (project_id, grant_id) DO UPDATE
-    SET status = EXCLUDED.status, source_version = EXCLUDED.source_version,
+    SET status = EXCLUDED.status, active_until = EXCLUDED.active_until, source_version = EXCLUDED.source_version,
         source_updated_at = EXCLUDED.source_updated_at, synced_at = now()
     WHERE EXCLUDED.source_version > a.source_version
     RETURNING 1`,
   values: [
     row.projectId, row.grantId, row.environment, row.customerId, row.externalCustomerId, row.accessKey, row.checkoutId, row.status,
-    row.sourceVersion, row.sourceUpdatedAt,
+    row.sourceVersion, row.sourceUpdatedAt, row.activeUntil,
   ],
 });
+
+const upsertSubscription = (row: SubscriptionProjection) => ({
+  text: `
+    INSERT INTO billingrelay.subscriptions AS s
+      (project_id, subscription_id, environment, customer_id, external_customer_id, checkout_id, product_ref, status, review_reason,
+       paid_through, access_until, cancel_requested, paypal_subscription_id, source_version, source_updated_at, synced_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, now())
+    ON CONFLICT (project_id, subscription_id) DO UPDATE
+    SET status = EXCLUDED.status, review_reason = EXCLUDED.review_reason, paid_through = EXCLUDED.paid_through,
+        access_until = EXCLUDED.access_until, cancel_requested = EXCLUDED.cancel_requested,
+        source_version = EXCLUDED.source_version, source_updated_at = EXCLUDED.source_updated_at, synced_at = now()
+    WHERE EXCLUDED.source_version > s.source_version
+    RETURNING 1`,
+  values: [
+    row.projectId, row.subscriptionId, row.environment, row.customerId, row.externalCustomerId, row.checkoutId, row.productRef, row.status,
+    row.reviewReason, row.paidThrough, row.accessUntil, row.cancelRequested, row.paypalSubscriptionId, row.sourceVersion, row.sourceUpdatedAt,
+  ],
+});
+
+const upsertFor = (projection: Projection) => {
+  if (projection.entityType === "checkout") return upsertPurchase(projection.row);
+  if (projection.entityType === "access_grant") return upsertAccess(projection.row);
+  return upsertSubscription(projection.row);
+};
 
 /**
  * One transaction. `unchanged` means the destination already had this version or newer: a repeat, a late job,
@@ -95,8 +119,7 @@ export async function deliver({ pool }: Destination, projection: Projection): Pr
       `INSERT INTO billingrelay.customers (project_id, customer_id, external_customer_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
       [row.projectId, row.customerId, row.externalCustomerId],
     );
-    const upsert = projection.entityType === "checkout" ? upsertPurchase(projection.row) : upsertAccess(projection.row);
-    const result = await client.query(upsert);
+    const result = await client.query(upsertFor(projection));
     await client.query("COMMIT");
     return result.rowCount ? "delivered" : "unchanged";
   } catch (error) {

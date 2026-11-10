@@ -99,12 +99,14 @@ type LiveCatalog = { version: number; config: CatalogConfig };
 
 const refuse = (code: string, message: string): QuoteRefusal => ({ code, message });
 
-function priceFromCatalog(request: Omit<CatalogQuoteRequest, "expiresInSeconds">, live: LiveCatalog | null): PricedItem | QuoteRefusal {
+function priceFromCatalog(request: Omit<CatalogQuoteRequest, "expiresInSeconds">, live: LiveCatalog | null, allowSubscription: boolean): PricedItem | QuoteRefusal {
   if (!live) return refuse("no_live_catalog", "Nothing is live in this project's catalog yet");
 
   const product = live.config.products.find((candidate) => candidate.ref === request.productRef);
   if (!product) return refuse("unknown_product", `"${request.productRef}" isn't in the live catalog`);
-  if (product.kind === "subscription") return refuse("not_quotable", `"${product.ref}" is a subscription, which starts from a PayPal plan`);
+  if (product.kind === "subscription" && !allowSubscription) {
+    return refuse("not_quotable", `"${product.ref}" is a subscription, which starts from a PayPal plan. Start a checkout for it instead`);
+  }
 
   const variants: { ref: string; name: string; attributes: Record<string, unknown>; price: { amount: number; currency: string }; benefits: CatalogBenefit[] }[] =
     product.variants;
@@ -140,9 +142,16 @@ function priceFromMerchant(request: Omit<MerchantQuoteRequest, "expiresInSeconds
   };
 }
 
-/** Works out the price and what the purchase grants. The stored result is never recalculated. */
-export function buildQuoteSnapshot(request: PricedRequest, live: LiveCatalog | null): { snapshot: QuoteSnapshot } | { refusal: QuoteRefusal } {
-  const priced = "item" in request ? priceFromMerchant(request, live) : priceFromCatalog(request, live);
+/**
+ * Works out the price and what the purchase grants. The stored result is never recalculated. Only a catalog checkout may start a
+ * subscription: its price is the PayPal plan's, so a quote holding it would promise nothing extra.
+ */
+export function buildQuoteSnapshot(
+  request: PricedRequest,
+  live: LiveCatalog | null,
+  { allowSubscription = false } = {},
+): { snapshot: QuoteSnapshot } | { refusal: QuoteRefusal } {
+  const priced = "item" in request ? priceFromMerchant(request, live) : priceFromCatalog(request, live, allowSubscription);
   if ("code" in priced) return { refusal: priced };
 
   const amount = priced.unitAmount * request.quantity;

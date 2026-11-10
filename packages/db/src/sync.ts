@@ -1,4 +1,5 @@
-import type { CheckoutSyncStatus, DestinationState, Projection, SyncOutcome, SyncStatusResponse } from "@billingrelay/core/sync";
+import { accessUntil } from "@billingrelay/core/subscriptions";
+import type { CheckoutSyncStatus, DestinationState, Projection, SyncEntityType, SyncOutcome, SyncStatusResponse } from "@billingrelay/core/sync";
 import { sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { getDb } from "./client";
@@ -17,11 +18,11 @@ const addAttempt = (db: Runner, attempt: { outboxId: string | null; outcome: Syn
     INSERT INTO sync_attempt (id, outbox_id, outcome, code, duration_ms)
     VALUES (${uuidv7()}, ${attempt.outboxId}, ${attempt.outcome}, ${attempt.code ?? null}, ${attempt.durationMs ?? null})`);
 
-export type ClaimedOutboxRow = { id: string; entityType: "checkout" | "access_grant"; entityId: string };
+export type ClaimedOutboxRow = { id: string; entityType: SyncEntityType; entityId: string };
 
 /** Same as events: one due row for the length of the lease, committed at once, so no source lock is held while the destination is written. */
 export async function claimOutboxRow(): Promise<ClaimedOutboxRow | null> {
-  const { rows } = await getDb().execute<{ id: string; entity_type: "checkout" | "access_grant"; entity_id: string }>(sql`
+  const { rows } = await getDb().execute<{ id: string; entity_type: SyncEntityType; entity_id: string }>(sql`
     UPDATE outbox
     SET attempts = attempts + 1,
         next_attempt_at = now() + make_interval(secs => ${LEASE_SECONDS})
@@ -69,12 +70,62 @@ type AccessRow = {
   access_key: string;
   checkout_id: string;
   status: string;
+  active_until: string | null;
   source_version: number;
   updated_at: string;
 };
 
+type SubscriptionRow = {
+  project_id: string;
+  customer_id: string;
+  external_customer_id: string;
+  subscription_id: string;
+  environment: string;
+  checkout_id: string;
+  product_ref: string;
+  status: string;
+  review_reason: string | null;
+  paid_through: string | null;
+  cancel_requested_at: string | null;
+  paypal_subscription_id: string;
+  source_version: number;
+  updated_at: string;
+};
+
+async function loadSubscriptionProjection(entityId: string): Promise<Projection | null> {
+  const { rows } = await getDb().execute<SubscriptionRow>(sql`
+    SELECT s.project_id, s.customer_id, cu.external_customer_id, s.id AS subscription_id, s.environment, s.checkout_id, s.product_ref,
+           s.status, s.review_reason, s.paid_through, s.cancel_requested_at, s.paypal_subscription_id, s.source_version, s.updated_at
+    FROM subscription s JOIN customer cu ON cu.id = s.customer_id
+    WHERE s.id = ${entityId}`);
+  const row = rows[0];
+  if (!row) return null;
+  const paidThrough = row.paid_through ? new Date(row.paid_through) : null;
+  return {
+    entityType: "subscription",
+    row: {
+      projectId: row.project_id,
+      customerId: row.customer_id,
+      externalCustomerId: row.external_customer_id,
+      subscriptionId: row.subscription_id,
+      environment: row.environment,
+      checkoutId: row.checkout_id,
+      productRef: row.product_ref,
+      status: row.status,
+      reviewReason: row.review_reason,
+      paidThrough,
+      accessUntil: paidThrough && accessUntil(paidThrough),
+      cancelRequested: row.cancel_requested_at !== null,
+      paypalSubscriptionId: row.paypal_subscription_id,
+      sourceVersion: row.source_version,
+      sourceUpdatedAt: new Date(row.updated_at),
+    },
+  };
+}
+
 /** The record as it is now, not as it was when the row was written: one delivery covers every change before it. */
-export async function loadProjection(entityType: "checkout" | "access_grant", entityId: string): Promise<Projection | null> {
+export async function loadProjection(entityType: SyncEntityType, entityId: string): Promise<Projection | null> {
+  if (entityType === "subscription") return loadSubscriptionProjection(entityId);
   if (entityType === "checkout") {
     const { rows } = await getDb().execute<PurchaseRow>(sql`
       SELECT c.project_id, c.customer_id, cu.external_customer_id, c.id AS checkout_id, c.environment,
@@ -116,7 +167,7 @@ export async function loadProjection(entityType: "checkout" | "access_grant", en
 
   const { rows } = await getDb().execute<AccessRow>(sql`
     SELECT g.project_id, g.customer_id, cu.external_customer_id, g.id AS grant_id, g.environment, g.access_key,
-           g.checkout_id, g.status, g.source_version, g.updated_at
+           g.checkout_id, g.status, g.active_until, g.source_version, g.updated_at
     FROM access_grant g JOIN customer cu ON cu.id = g.customer_id
     WHERE g.id = ${entityId}`);
   const row = rows[0];
@@ -132,6 +183,7 @@ export async function loadProjection(entityType: "checkout" | "access_grant", en
       accessKey: row.access_key,
       checkoutId: row.checkout_id,
       status: row.status,
+      activeUntil: row.active_until ? new Date(row.active_until) : null,
       sourceVersion: row.source_version,
       sourceUpdatedAt: new Date(row.updated_at),
     },

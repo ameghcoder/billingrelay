@@ -44,11 +44,34 @@ export type AccessProjection = CustomerProjection & {
   accessKey: string;
   checkoutId: string;
   status: string;
+  // Empty for a one-time purchase. A subscription's access ends then unless a renewal moves it.
+  activeUntil: Date | null;
   sourceVersion: number;
   sourceUpdatedAt: Date;
 };
 
-export type Projection = { entityType: "checkout"; row: PurchaseProjection } | { entityType: "access_grant"; row: AccessProjection };
+export type SubscriptionProjection = CustomerProjection & {
+  subscriptionId: string;
+  environment: string;
+  checkoutId: string;
+  productRef: string;
+  status: string;
+  reviewReason: string | null;
+  paidThrough: Date | null;
+  accessUntil: Date | null;
+  cancelRequested: boolean;
+  paypalSubscriptionId: string;
+  sourceVersion: number;
+  sourceUpdatedAt: Date;
+};
+
+export const SYNC_ENTITY_TYPES = ["checkout", "access_grant", "subscription"] as const;
+export type SyncEntityType = (typeof SYNC_ENTITY_TYPES)[number];
+
+export type Projection =
+  | { entityType: "checkout"; row: PurchaseProjection }
+  | { entityType: "access_grant"; row: AccessProjection }
+  | { entityType: "subscription"; row: SubscriptionProjection };
 
 export const syncStatusResponseSchema = z.object({
   destination: z.object({

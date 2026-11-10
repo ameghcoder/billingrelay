@@ -96,8 +96,24 @@ another.
 retain already-paid access through its stored paid-through date. A failed renewal doesn't create another paid
 period. Pending, suspended or halted states stay visible. Complex upgrades, refunds and proration are later policies.
 
-**Open decision (M09): grace period.** Sandbox renewals post after the scheduled billing time (see `paypal.md`).
-If access ends exactly at the billing time, paying subscribers lose access until the payment posts.
+**Grace period (decided for M09).** Access lasts until PayPal's next billing time after the last counted payment (`paid_through`), plus
+24 hours. Sandbox renewals posted 2 to 6 hours after the billing time (13 cycles observed), so ending exactly at the billing time would cut off
+subscribers who paid. Monthly credits end at the same moment.
+
+**As built (M09).**
+
+| Area | Rule |
+|---|---|
+| Start | Only from the live catalog, quantity 1. Pay creates the PayPal subscription with our checkout ID as `custom_id`, on the plan for that exact price |
+| Plans | Made at PayPal the first time anyone buys at a price, then reused. A new price is a new plan, so a subscriber's price never changes |
+| Facts | An event, the buyer's return and the worker's own looks all ask PayPal for the subscription and its transactions. The event's amounts are never used |
+| One effect | One row per PayPal sale ID (the same ID the sale event and the transaction list use). Only a new row that counts moves `paid_through` |
+| Counts | Completed, for exactly the plan's price and currency, on our subscription (reference and plan). Anything else goes to review and grants nothing |
+| Access | One grant per subscription, with `active_until`. It ends by time: no job has to run for access to stop |
+| Missed events | The worker looks 1, 6 and 25 hours after each renewal is due, and every 15 minutes for 3 hours while the buyer hasn't approved |
+| Late approval | PayPal charges when the buyer approves, even after the checkout's hour. That's honoured: the plan's price is fixed and money moved |
+| One wanted | One active, suspended or unexpired pending subscription per customer and product. Checked with the customer's row locked |
+| Cancel | Asks PayPal to cancel, then reads the result. `paid_through` never moves backwards |
 
 ## Credit ledger
 

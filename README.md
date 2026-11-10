@@ -81,8 +81,8 @@ Only capabilities with a recorded proof are marked verified.
 | One-time order: create, approve, capture | ✅ verified with a script | Order `0C768617WF029362W`, capture `37L31305X26514342` |
 | Duplicate capture is safe | ✅ verified with a script | Same result on the same request ID; `ORDER_ALREADY_CAPTURED` on a new one |
 | Webhook signature verification | ✅ verified with a script | 4 real events, all `verification=SUCCESS` |
-| Monthly fixed subscription plan | ⬜ not verified | |
-| Subscription renewal observed | ✅ daily plan only | Subscription `I-937ASKVASBHS`, 7 cycles completed; renewal webhook not captured yet |
+| Monthly subscriptions: plan, checkout, access, cancel | ✅ verified locally | A real sandbox buyer on a monthly plan BillingRelay made; replayed events, two workers, a worker killed mid-read, cancel through the API with PayPal's real event. `tests/invariants/subscriptions.test.ts`; not yet hosted |
+| Subscription renewal observed | ⚠️ daily plan only | `I-937ASKVASBHS`: 13 cycles, each posted 1.5 to 6 hours late. A monthly renewal can't be seen before the deadline; a daily-plan subscription through BillingRelay's own routes is left running for one |
 | Operator login, admin routes protected | ✅ verified locally | `tests/e2e/admin-auth.test.ts` against a production build; not yet hosted |
 | PayPal connection: encrypted secret, webhook setup, capability check | ✅ verified locally | Real sandbox, `tests/e2e/paypal-connection.test.ts` against a production build; not yet hosted |
 | Catalog: products, variants, prices, versions, activation | ✅ verified locally | `tests/e2e/catalog.test.ts` against a production build; not yet hosted, and no checkout reads it yet |

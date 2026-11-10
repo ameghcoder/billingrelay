@@ -244,7 +244,6 @@ describe.runIf(process.env.E2E_WRITE_DB === "1" && process.env.E2E_PAYPAL === "1
     });
 
     it.each<[object, string]>([
-      [{ productRef: "c-pro", variantRef: "monthly" }, "not_quotable"],
       [{ productRef: "nope", variantRef: undefined }, "unknown_product"],
       [{ variantRef: "nope" }, "unknown_variant"],
       [{ variantRef: undefined }, "variant_required"],
@@ -341,6 +340,52 @@ describe.runIf(process.env.E2E_WRITE_DB === "1" && process.env.E2E_PAYPAL === "1
       const after = await status(id);
       expect(after).toMatchObject({ money: "pending", paypal: { captureId: null } });
       expect(pay.approvalUrl).toContain(after.paypal.orderId);
+    });
+  });
+
+  describe("subscriptions", () => {
+    const subscriptionFor = (customer: string) => fromCatalog({ externalCustomerId: customer, productRef: "c-pro", variantRef: "monthly", metadata: {} });
+
+    it("a subscription starts from the live catalog; a second one for the same customer is refused", async () => {
+      const customer = `sub-${newKey()}`;
+      const first = await send(CHECKOUTS, subscriptionFor(customer));
+      expect(first.status).toBe(201);
+      const body = await first.json();
+      expect(body.snapshot.product).toMatchObject({ ref: "c-pro", kind: "subscription" });
+      expect(body.subscription).toBeNull();
+
+      const second = await send(CHECKOUTS, subscriptionFor(customer));
+      expect(second.status).toBe(409);
+      expect(await second.json()).toMatchObject({ error: { code: "subscription_exists", details: { checkoutId: body.id } } });
+      expect((await send(CHECKOUTS, subscriptionFor(`other-${customer}`))).status).toBe(201);
+    });
+
+    it("a quote still can't hold a subscription", async () => {
+      const res = await send(QUOTES, { externalCustomerId: CUSTOMER, productRef: "c-pro", variantRef: "monthly" });
+      expect(res.status).toBe(422);
+      expect(await errorCode(res)).toBe("not_quotable");
+    });
+
+    it("Pay makes one real PayPal subscription on a monthly plan, and clicking again reuses it", async () => {
+      const created = await (await send(CHECKOUTS, subscriptionFor(`sub-pay-${newKey()}`))).json();
+      const pay = () => fetch(`${BASE_URL}/checkout/${created.id}/pay`, { method: "POST" });
+      const first = await (await pay()).json();
+      expect(new URL(first.approvalUrl).hostname).toMatch(/sandbox\.paypal\.com$/);
+      const subscription = (await status(created.id)).subscription;
+      expect(subscription).toMatchObject({ status: "pending", paidThrough: null, accessUntil: null, cancelRequested: false });
+
+      const again = await (await pay()).json();
+      expect(again.approvalUrl).toBe(first.approvalUrl);
+      expect((await status(created.id)).subscription.id).toBe(subscription.id);
+    });
+
+    it("cancelling before the buyer approves is refused, and an unknown one is 404", async () => {
+      const created = await (await send(CHECKOUTS, subscriptionFor(`sub-cancel-${newKey()}`))).json();
+      await fetch(`${BASE_URL}/checkout/${created.id}/pay`, { method: "POST" });
+      const { id } = (await status(created.id)).subscription;
+      const cancel = (subscriptionId: string) => send(`/v1/subscriptions/${subscriptionId}/cancel`, {}, null);
+      expect((await cancel(id)).status).toBe(409);
+      expect((await cancel("00000000-0000-7000-8000-000000000000")).status).toBe(404);
     });
   });
 

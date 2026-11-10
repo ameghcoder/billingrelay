@@ -38,7 +38,7 @@ The API key determines the project and environment (sandbox/live). The merchant 
 | `POST /v1/checkouts` | Start checkout from a quote or the live catalog. `201` when created, `200` for a retry. See below. |
 | `GET /v1/checkouts/:id` | Money, fulfillment and sync status kept separate, plus the safe next action. Read-only, with no PayPal call. |
 | `GET /v1/customers/:externalCustomerId/billing` | Purchases, subscriptions, access, credit balance, `version`. |
-| `POST /v1/subscriptions/:id/cancel` | Cancel at PayPal; access remains until `paidThrough`. |
+| `POST /v1/subscriptions/:id/cancel` | Stops renewals at PayPal, then returns the subscription as PayPal now has it. Access stays until `accessUntil`. Safe to repeat. `409 subscription_not_started` before the buyer approves; `503 paypal_unavailable` if PayPal can't be reached, so renewals may not be stopped yet. |
 | `POST /v1/credits/consume` | Atomic debit: `{ externalCustomerId, amount, usageId }`. The same `usageId` returns the prior result. |
 | `POST /v1/usage/:usageId/compensate` | One compensation linked to the original debit. |
 
@@ -95,6 +95,11 @@ Refusals that store nothing: the quote's own `422` codes; `404` for a quote outs
 `details.checkoutId`; `422 return_url_not_allowed`, unless the origin is under Developers, in Allowed return URLs; `422 paypal_not_connected`;
 `422 public_url_invalid`.
 
+**A subscription starts only from the live catalog**, never from a quote: its price is a PayPal plan's. Pay creates the PayPal subscription
+(and, for a new price, the monthly plan); PayPal charges the first month when the buyer approves. One customer can't start a second one for
+the same product while one is active, suspended, or still waiting on an unexpired checkout: `409 subscription_exists` with `details.checkoutId`.
+A cancelled or expired one, or one left unapproved past its hour, doesn't count.
+
 A checkout lasts 1 hour from creation, however close its quote was to expiring. The response to create and read:
 
 ```json
@@ -108,9 +113,21 @@ A checkout lasts 1 hour from creation, however close its quote was to expiring. 
   "sync": "not_configured | pending | delivered | failed",
   "nextAction": "redirect | wait | none | contact_support",
   "snapshot": {},
-  "paypal": { "orderId": null, "captureId": null }
+  "paypal": { "orderId": null, "captureId": null },
+  "subscription": null
 }
 ```
+
+`subscription` is null except on a subscription checkout after Pay:
+
+```json
+{ "id": "0193…", "status": "pending | active | suspended | cancelled | expired", "reviewReason": null,
+  "paidThrough": "2026-12-09T10:00:00.000Z", "accessUntil": "2026-12-10T10:00:00.000Z", "cancelRequested": false }
+```
+
+`paidThrough` is PayPal's next billing time after the last payment that counted; access lasts 24 hours longer, because renewals post hours late.
+A payment counts only if it completed for exactly the plan's price; anything else sets `reviewReason` and grants nothing. For a subscription
+checkout, `money` is the first payment: `captured` once it counts, and `paypal.captureId` is its sale ID.
 
 | `money` | Meaning | `nextAction` |
 |---|---|---|

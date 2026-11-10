@@ -22,7 +22,7 @@ const MESSAGES = {
 // No attempt got an answer, so what we last knew may be out of date, and money may have moved since.
 const NO_ANSWER = { title: "We couldn't confirm your payment yet", body: `${DONT_PAY_AGAIN} Reload this page to check again.` };
 
-type Item = { name: string; variantName: string | null; quantity: number; total: string };
+type Item = { name: string; variantName: string | null; quantity: number; total: string; monthly: boolean };
 
 type Props = { id: string; item: Item; initial: PublicCheckout; hasOrder: boolean; returning: boolean; cancelled: boolean };
 
@@ -108,7 +108,7 @@ export function CheckoutPanel({ id, item, initial, hasOrder, returning, cancelle
             <dd>{item.quantity}</dd>
           </div>
           <div className="flex justify-between text-base font-semibold">
-            <dt>Total</dt>
+            <dt>{item.monthly ? "Every month" : "Total"}</dt>
             <dd data-testid="checkout-total">{item.total}</dd>
           </div>
         </dl>
@@ -133,7 +133,7 @@ export function CheckoutPanel({ id, item, initial, hasOrder, returning, cancelle
               </p>
             )}
             <Button data-testid="pay" disabled={paying || !ready} onClick={pay}>
-              {paying ? "Opening PayPal…" : "Pay with PayPal"}
+              {paying ? "Opening PayPal…" : item.monthly ? "Subscribe with PayPal" : "Pay with PayPal"}
             </Button>
           </>
         )}

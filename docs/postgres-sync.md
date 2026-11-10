@@ -74,14 +74,20 @@ pasted into an SQL editor. An existing `billingrelay` schema it didn't make stop
 name yet.
 
 **Tables.** `customers` (your user ID is `external_customer_id`), `purchases` (one per checkout, from its first payment change), `access` (one
-per paid purchase that grants access; a refund makes it `restricted`) and `schema_version`. Nothing is ever deleted. Never copied: the buyer's
-email or name, PayPal's raw events, API keys. Subscriptions and balances arrive with M09 and M11. An unpaid checkout isn't copied, and
-`expired` isn't a stored status, so `purchases.expires_at` is there instead. Decide access from `access`.
+per paid purchase that grants access; a refund makes it `restricted`), `subscriptions` (status, `paid_through`, `access_until`,
+`cancel_requested`) and `schema_version`. Nothing is ever deleted. Never copied: the buyer's email or name, PayPal's raw events, API keys.
+Balances arrive with M11. An unpaid checkout isn't copied, and `expired` isn't a stored status, so `purchases.expires_at` is there instead.
+Decide access from `access`. A subscription's access row has `active_until`, which a renewal moves forward; a one-time purchase leaves it empty.
 
 ```sql
 SELECT 1 FROM billingrelay.access
-WHERE external_customer_id = $1 AND access_key = 'pro' AND status = 'active';
+WHERE external_customer_id = $1 AND access_key = 'pro' AND status = 'active'
+  AND (active_until IS NULL OR active_until > now());
 ```
+
+**Upgrading.** Running `pnpm destination:setup` again applies only the versions a destination doesn't have yet (`002_subscriptions.sql` adds
+`subscriptions` and `access.active_until`), keeping every row. Until it's run, the worker reports `not_ready (schema_version_mismatch)` and
+waits, delivering nothing.
 
 **Delivery.** An outbox row only says a record changed. The worker sends that record's current state, and every waiting row for it up to that
 version is then delivered. It runs on its own queue, so a slow destination can't hold up payments, and it never talks to PayPal.

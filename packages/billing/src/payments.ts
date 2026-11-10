@@ -1,13 +1,9 @@
 import { findOrderMismatch, isSettled, judgeCaptures } from "@billingrelay/core/checkouts";
-import { decryptSecret, SecretUnreadableError } from "@billingrelay/core/secrets";
 import {
-  getPaypalConnection,
-  getPaypalConnectionSecret,
   markCaptureRequested,
   recordCheckoutMoney,
   saveCheckoutOrder,
   type CheckoutRecord,
-  type PaypalConnectionRecord,
 } from "@billingrelay/db";
 import {
   captureOrder,
@@ -15,12 +11,12 @@ import {
   createOrder,
   getOrder,
   isOrderGone,
-  openReusedSession,
-  openSession,
   PaypalError,
   type PaypalOrder,
   type PaypalSession,
 } from "@billingrelay/provider-paypal";
+import { sessionFor } from "./session";
+import { confirmSubscription, startSubscription } from "./subscriptions";
 
 const orderRequestId = (checkoutId: string) => `order-${checkoutId}`;
 const captureRequestId = (orderId: string) => `capture-${orderId}`;
@@ -31,33 +27,6 @@ const expectedFor = (checkout: CheckoutRecord) => ({
   currency: checkout.snapshot.currency,
   sellerId: checkout.paypalSellerId,
 });
-
-export const secretBinding = (projectId: string, environment: string) => `paypal_connection:${projectId}:${environment}`;
-
-/** Reuses a recent token unless `fresh` is set, which a connection check needs to really ask PayPal. */
-export async function openStoredSession(connection: PaypalConnectionRecord, { fresh = false } = {}): Promise<PaypalSession> {
-  const secretEncrypted = await getPaypalConnectionSecret(connection.id);
-  if (!secretEncrypted) throw new SecretUnreadableError();
-  const credentials = {
-    environment: connection.environment,
-    clientId: connection.clientId,
-    clientSecret: decryptSecret(secretEncrypted, secretBinding(connection.projectId, connection.environment)),
-  };
-  return fresh ? openSession(credentials) : openReusedSession(credentials);
-}
-
-async function sessionFor(checkout: CheckoutRecord): Promise<PaypalSession> {
-  // Every caller comes through here, so no path can reach live while it's switched off.
-  if (checkout.environment !== "sandbox") throw new PaypalError("unavailable", "live_disabled");
-  const connection = await getPaypalConnection(checkout.projectId, checkout.environment);
-  if (!connection) throw new PaypalError("unavailable", "not_connected");
-  try {
-    return await openStoredSession(connection);
-  } catch (error) {
-    if (error instanceof SecretUnreadableError) throw new PaypalError("unavailable", "secret_unreadable");
-    throw error;
-  }
-}
 
 /** `unknown`: PayPal gave no usable answer this time, so the caller should say "still confirming". */
 export type ConfirmResult = { checkout: CheckoutRecord; unknown: boolean };
@@ -119,6 +88,7 @@ function actOnOrder(checkout: CheckoutRecord, session: PaypalSession, order: Pay
 
 /** Read, check, capture, check. Safe to repeat from anywhere: the same order is only ever captured once. */
 export async function confirmPayment(checkout: CheckoutRecord): Promise<ConfirmResult> {
+  if (checkout.snapshot.product.kind === "subscription") return confirmSubscription(checkout);
   if (isSettled(checkout) || !checkout.paypalOrderId) return known(checkout);
   try {
     const session = await sessionFor(checkout);
@@ -164,6 +134,7 @@ async function continueOrder(checkout: CheckoutRecord, session: PaypalSession, o
 /** Makes the checkout's one PayPal order, or reuses it. Throws a PaypalError if PayPal says no or can't be reached. */
 export async function startPayment(checkout: CheckoutRecord, origin: string | null): Promise<StartResult> {
   if (checkout.moneyStatus !== "pending" || isSettled(checkout)) return known(checkout);
+  if (checkout.snapshot.product.kind === "subscription") return startSubscription(checkout, origin);
 
   const session = await sessionFor(checkout);
   if (checkout.paypalOrderId) return continueOrder(checkout, session, checkout.paypalOrderId);

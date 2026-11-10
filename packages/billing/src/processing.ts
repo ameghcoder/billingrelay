@@ -3,6 +3,7 @@ import {
   applyCheckoutBenefits,
   findCheckout,
   findCheckoutForEvent,
+  findSubscriptionForEvent,
   restrictRefundedCheckout,
   type CheckoutRecord,
   type ClaimedPaypalEvent,
@@ -10,6 +11,7 @@ import {
 import { readEvent, type PaypalEventFacts } from "@billingrelay/provider-paypal";
 import { z } from "zod";
 import { confirmPayment } from "./payments";
+import { syncSubscription } from "./subscriptions";
 
 export type EventOutcome = { status: "processed" | "ignored" } | { status: "retry"; code: string };
 
@@ -22,10 +24,25 @@ const applyIfCaptured = async (checkout: CheckoutRecord) => {
 };
 
 /** Our own IDs are UUIDs, and PayPal repeats whatever `custom_id` an order on this app was given, ours or not. */
+const ourCheckoutId = (checkoutId: string | null) => (z.uuid().safeParse(checkoutId).success ? checkoutId : null);
+
 const asCheckoutReference = ({ checkoutId, orderId }: PaypalEventFacts) => ({
-  checkoutId: z.uuid().safeParse(checkoutId).success ? checkoutId : null,
+  checkoutId: ourCheckoutId(checkoutId),
   orderId: checkoutId === null ? orderId : null,
 });
+
+/** Any subscription event: ask PayPal for the subscription and its payments. The event's own amounts are never used. */
+async function handleSubscriptionEvent(scope: ClaimedPaypalEvent["scope"], facts: PaypalEventFacts): Promise<EventOutcome> {
+  const checkoutId = ourCheckoutId(facts.checkoutId);
+  const subscription = await findSubscriptionForEvent(scope, { paypalSubscriptionId: facts.subscriptionId, checkoutId });
+  if (!subscription) {
+    // Ours, but the row isn't stored yet (PayPal answered and the save hasn't committed): look again shortly.
+    const ours = checkoutId && (await findCheckoutForEvent(scope, { checkoutId, orderId: null }));
+    return ours ? retry("subscription_not_recorded") : IGNORED;
+  }
+  const { unknown } = await syncSubscription(subscription);
+  return unknown ? retry("paypal_unavailable") : PROCESSED;
+}
 
 async function handleRefund(checkout: CheckoutRecord, captureId: string | null): Promise<EventOutcome> {
   if (checkout.moneyStatus === "captured") {
@@ -47,6 +64,7 @@ export async function handleEvent({ eventType, payload, scope }: ClaimedPaypalEv
   if (scope.environment !== "sandbox") return IGNORED;
   const facts = readEvent(eventType, payload);
   if (facts.signal === "other") return IGNORED;
+  if (facts.signal === "subscription_changed") return handleSubscriptionEvent(scope, facts);
 
   const found = await findCheckoutForEvent(scope, asCheckoutReference(facts));
   if (!found) return IGNORED;

@@ -1,5 +1,6 @@
 import { checkoutResponseSchema, isSettled, nextActionFor, showMoneyStatus, type CheckoutResponse, type PublicCheckout } from "@billingrelay/core/checkouts";
-import { getCheckoutSync, type CheckoutRecord } from "@billingrelay/db";
+import { findSubscriptionByCheckout, getCheckoutSync, type CheckoutRecord } from "@billingrelay/db";
+import { toSubscriptionSummary } from "./subscription";
 import { publicOrigin } from "./paypal-connection";
 
 export const checkoutUrlFor = (id: string) => `${publicOrigin() ?? ""}/checkout/${id}`;
@@ -8,6 +9,7 @@ export const checkoutUrlFor = (id: string) => `${publicOrigin() ?? ""}/checkout/
 export async function toCheckoutResponse(checkout: CheckoutRecord): Promise<CheckoutResponse> {
   const money = showMoneyStatus(checkout);
   const sync = await getCheckoutSync(checkout.id);
+  const subscription = checkout.snapshot.product.kind === "subscription" ? await findSubscriptionByCheckout(checkout.id) : null;
   return checkoutResponseSchema.parse({
     id: checkout.id,
     externalCustomerId: checkout.externalCustomerId,
@@ -19,6 +21,7 @@ export async function toCheckoutResponse(checkout: CheckoutRecord): Promise<Chec
     nextAction: nextActionFor(money),
     snapshot: checkout.snapshot,
     paypal: { orderId: checkout.paypalOrderId, captureId: checkout.paypalCaptureId },
+    subscription: subscription && toSubscriptionSummary(subscription),
   });
 }
 

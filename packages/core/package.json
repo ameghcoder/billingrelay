@@ -15,6 +15,7 @@
     "./paypal-connection": "./src/paypal-connection.ts",
     "./quotes": "./src/quotes.ts",
     "./rate-limit": "./src/rate-limit.ts",
+    "./repairs": "./src/repairs.ts",
     "./secrets": "./src/secrets.ts",
     "./subscriptions": "./src/subscriptions.ts",
     "./sync": "./src/sync.ts"

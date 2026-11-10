@@ -5,6 +5,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { sandboxScope } from "@/lib/admin-routes";
 import { requireOperatorPage } from "@/lib/operator";
+import { Investigate } from "./investigate";
 import { TraceView } from "./trace-view";
 
 export default async function CustomerPage({ params }: { params: Promise<{ externalCustomerId: string }> }) {
@@ -25,6 +26,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ exter
       <p className="mt-2 mb-6 text-muted-foreground">
         Each checkout, then everything that followed it in time order: PayPal events, billing effects, access, and every copy to your database.
       </p>
+      <Investigate externalCustomerId={trace.externalCustomerId} />
       <TraceView trace={customerTraceSchema.parse(trace)} />
     </>
   );

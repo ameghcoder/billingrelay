@@ -388,7 +388,7 @@ export async function getDashboardAttention(scope: ProjectScope): Promise<Dashbo
 export type TraceStep =
   | { kind: "checkout_created"; at: string }
   | { kind: "capture_requested"; at: string }
-  | { kind: "event"; at: string; eventType: string; status: PaypalEventStatus; attempts: number; failureCode: string | null }
+  | { kind: "event"; at: string; eventId: string; eventType: string; status: PaypalEventStatus; attempts: number; failureCode: string | null }
   | { kind: "effect"; at: string; effect: string; paypalPaymentId: string }
   | { kind: "grant"; at: string; grantId: string; accessKey: string; status: "active" | "restricted" }
   | {
@@ -501,6 +501,7 @@ export async function getCustomerTrace(scope: ProjectScope, externalCustomerId: 
     add(row.checkout_id, {
       kind: "event",
       at: iso(row.received_at),
+      eventId: row.id,
       eventType: row.event_type,
       status: row.status,
       attempts: row.attempts,

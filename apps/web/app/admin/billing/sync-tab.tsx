@@ -5,6 +5,7 @@ import { OUTBOX_STATUSES, type SyncStatusResponse } from "@billingrelay/core/syn
 import type { ColDef } from "ag-grid-community";
 import { useState } from "react";
 import { DataGrid } from "@/components/data-grid";
+import { SyncActions } from "./sync-actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CustomerCell, FilterSelect, ListStatus, PAGE_SIZE, Pager, formatSeconds, formatTime, useAdminList } from "./list-controls";
 
@@ -80,7 +81,8 @@ export function SyncTab({ initial }: { initial: DeliveryFilterValues }) {
         <CardHeader>
           <CardTitle>Merchant database</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-4">
+          <SyncActions />
           <ListStatus loading={overview.loading && !status} failure={overview.failure} />
           {status && (
             <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">

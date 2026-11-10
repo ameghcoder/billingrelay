@@ -181,6 +181,34 @@ export const auditEvent = pgTable(
   ],
 );
 
+// A repair the investigation agent proposed: one existing, duplicate-safe handler on one record. A person approves it; running it
+// rechecks that the record is still in the state it was proposed for (`target_state`), so a stale proposal can't run.
+export const repairAction = pgTable(
+  "repair_action",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id),
+    kind: text("kind").$type<"retry_delivery" | "retry_event" | "retry_sync" | "recheck_payment">().notNull(),
+    targetId: text("target_id"),
+    targetState: text("target_state").notNull(),
+    reason: text("reason").notNull(),
+    status: text("status").$type<"proposed" | "approved" | "executed" | "refused">().notNull().default("proposed"),
+    outcome: text("outcome"),
+    proposedBy: text("proposed_by").notNull(),
+    approvedBy: text("approved_by"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    executedAt: timestamp("executed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("repair_action_kind_check", sql`${table.kind} IN ('retry_delivery', 'retry_event', 'retry_sync', 'recheck_payment')`),
+    check("repair_action_status_check", sql`${table.status} IN ('proposed', 'approved', 'executed', 'refused')`),
+    index("repair_action_project_idx").on(table.projectId, table.createdAt),
+  ],
+);
+
 // The key itself is never stored. It decides the project and environment of every /v1 request.
 export const apiKey = pgTable(
   "api_key",

@@ -1,5 +1,23 @@
 export { listAudit, recordAudit, type AuditEntry } from "./audit";
 export {
+  approveRepair,
+  executeRepair,
+  getRepair,
+  inspectRepairTarget,
+  proposeRepair,
+  reconcileNow,
+  REPAIR_KINDS,
+  resendEverything,
+  retryByHand,
+  retryDelivery,
+  retryEvent,
+  type ByHandResult,
+  type ExecuteResult,
+  type ReconcileCounts,
+  type RepairKind,
+  type RepairRecord,
+} from "./repairs";
+export {
   activateCatalogVersion,
   approveCatalogVersion,
   catalogConfigHash,
@@ -17,6 +35,7 @@ export {
 export {
   claimCheckoutForBenefits,
   claimUnclearCheckout,
+  claimUnconfirmedOrder,
   createCheckout,
   findCheckout,
   findCheckoutByKey,

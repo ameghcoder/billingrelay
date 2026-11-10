@@ -12,6 +12,8 @@ type Transaction = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]
 const FIRST_CHECK_AFTER_CAPTURE_SECONDS = 30;
 // 5s, 30s, 2m, 10m, then hourly: about 24 hours.
 const MAX_UNCLEAR_CHECKS = 28;
+// 5s, 30s, 2m, 10m, then hourly: enough to cover the rest of a checkout's hour.
+const MAX_UNCONFIRMED_CHECKS = 5;
 
 export type CheckoutRecord = {
   id: string;
@@ -242,6 +244,15 @@ export const claimCheckoutForBenefits = () =>
   claimCheckout(sql`
     money_status = 'captured' AND snapshot->'product'->>'kind' <> 'subscription'
     AND (fulfillment_reason IS NULL OR fulfillment_reason = 'waiting_for_credit_ledger')`);
+
+/**
+ * Reconciliation: an order the buyer may have approved, with no event and no return. Asked about a few times while the checkout's
+ * hour lasts, through the same confirm path as the buyer's own return, which never captures after that hour.
+ */
+export const claimUnconfirmedOrder = () =>
+  claimCheckout(sql`
+    money_status = 'pending' AND paypal_order_id IS NOT NULL AND capture_requested_at IS NULL
+    AND created_at < now() - interval '5 minutes' AND expires_at > now() AND check_attempts < ${MAX_UNCONFIRMED_CHECKS}`);
 
 /** A capture was sent and its outcome isn't known. Gives up after about a day, and stays visible for a person. */
 export const claimUnclearCheckout = () =>

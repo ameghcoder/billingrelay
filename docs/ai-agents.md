@@ -83,6 +83,17 @@ Example: the capture completed, the billing transaction committed, the target co
 Canvas and chat edit the same validated draft. MCP uses the same permissions, approval records and audit trail. A draft can't become active just because an
 AI client asks.
 
+### As built (M14)
+
+- On a customer's page, **Investigate**: the model gets two read-only tools (the customer's trace and the sync status, both codes, statuses
+  and IDs only) and must finish with a structured report: facts with their evidence IDs, the likely cause as an inference, what's unknown, a
+  step only the operator can take (such as granting a permission back), and at most one proposal from `retry_delivery`, `retry_event`,
+  `retry_sync`, `recheck_payment`.
+- The server keeps a proposal only if it names a record in that customer's trace and applies now; it's stored with a fingerprint of that
+  record's state. Approve, then Run: Run rechecks the fingerprint, so a proposal for something already retried, delivered or settled refuses.
+- Reconciliation runs in the worker (orders approved with no event or return, benefits not applied, unknown payments, missed renewals), and
+  "Scan now", "Retry now" and "Resend everything" run the same handlers by hand. None of them can charge, refund or change a balance.
+
 ## Guardrails
 
 | Allowed | Enforced outside the model |

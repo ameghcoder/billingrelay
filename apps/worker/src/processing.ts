@@ -5,6 +5,7 @@ import {
   claimPaypalEvent,
   claimSubscriptionForCheck,
   claimUnclearCheckout,
+  claimUnconfirmedOrder,
   expireLapsedCredits,
   failAbandonedPaypalEvents,
   finishPaypalEvent,
@@ -61,5 +62,6 @@ export async function runPass(shouldStop: () => boolean): Promise<void> {
   await drain(shouldStop, claimPaypalEvent, runEvent);
   await drain(shouldStop, claimCheckoutForBenefits, (id) => runCheck("Checkout", "benefits", id, applyCheckoutBenefits));
   await drain(shouldStop, claimUnclearCheckout, (id) => runCheck("Checkout", "unclear payment", id, recheckPayment));
+  await drain(shouldStop, claimUnconfirmedOrder, (id) => runCheck("Checkout", "unconfirmed order", id, recheckPayment));
   await drain(shouldStop, claimSubscriptionForCheck, (id) => runCheck("Subscription", "renewal", id, recheckSubscription));
 }

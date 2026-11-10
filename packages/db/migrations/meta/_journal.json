@@ -78,6 +78,13 @@
       "when": 1794312513997,
       "tag": "0010_outgoing_cassandra_nova",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794323810761,
+      "tag": "0011_ordinary_ghost_rider",
+      "breakpoints": true
     }
   ]
 }

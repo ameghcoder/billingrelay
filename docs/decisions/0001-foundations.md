@@ -69,3 +69,5 @@ Status: accepted, 2026-10-28 to 2026-11-05.
     and makes it live.
 42. **MCP clients get their own kind of key and no tool that approves or goes live.** A leaked backend key can't edit the catalog, a leaked MCP
     key can't take payments, and "only a person makes it live" holds because the capability doesn't exist on that surface.
+43. **An AI repair is one existing handler, on one record in the trace, bound to that record's state.** The model reads codes and IDs,
+    proposes from a fixed list, and a person approves; running it rechecks the fingerprint, so a stale or repeated repair can't act.

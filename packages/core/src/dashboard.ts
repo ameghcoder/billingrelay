@@ -119,6 +119,8 @@ const traceStepSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("event"),
     at: z.string(),
+    // Our row's ID, which a retry names. Not PayPal's event ID.
+    eventId: z.string(),
     eventType: z.string(),
     status: z.enum(PAYPAL_EVENT_STATUSES),
     attempts: z.number(),

@@ -242,9 +242,13 @@ used as an environment: `live` returns `422 live_disabled` before any PayPal cal
 | `GET /admin/billing/events` | Stored PayPal events: type, status, attempts, failure code, received time and the checkout each is about. Filters `status` and `eventType`, paged the same way. Never the payload, which names the buyer. |
 | `GET /admin/billing/deliveries` | Outbox rows: record, status, attempts, failure code, lag, and the last attempt's outcome, code and duration. Filters `status` and `entityType`, paged the same way. |
 | `GET /admin/customers/:externalCustomerId/trace` | One customer's latest 50 checkouts, each followed in time order by its events, billing effects, access grants, outbox rows and every sync attempt with its code and duration. `404` for an unknown customer. |
-| `POST /admin/sync/deliveries/:id/retry` | Retry only a known, eligible failed delivery. Audited. |
-| `POST /admin/investigations` | Scoped evidence plus a typed proposal. No mutations. |
-| `POST /admin/actions/:id/approve` | Approve a proposed repair. |
-| `POST /admin/actions/:id/execute` | Recheck state and version, run a supported handler, record the actual outcome. |
+| `POST /admin/sync/deliveries/:id/retry` | One failed or refused delivery goes again now. `409 not_retryable` for any other. Audited. |
+| `POST /admin/events/:id/retry` | One failed PayPal event is processed again (it only says where to look). `409 not_retryable` for any other. Audited. |
+| `POST /admin/sync/retry` | Ends every wait: failed deliveries back in line, the merchant database checked on the next pass. |
+| `POST /admin/sync/resend` | Every record's latest change goes again, for a new or rebuilt merchant database; it keeps only newer versions. `{ requeued }`. |
+| `POST /admin/reconcile` | Moves what reconciliation looks at to the front of the worker's queue: `{ unconfirmedOrders, benefitsPending, failedEvents, failedDeliveries }`. |
+| `POST /admin/investigations` | `{ externalCustomerId, question? }`. The AI reads that customer's trace and the sync status (codes and IDs only) and returns `{ report: { facts, inference, uncertainty, operatorStep }, action, proposalDropped }`. `action` is stored only if it names a record in this customer's trace and applies now: `retry_delivery`, `retry_event`, `retry_sync` or `recheck_payment`. No mutations. `503 ai_unavailable` without a model. |
+| `POST /admin/actions/:id/approve` | A person approves one proposed repair. Audited. |
+| `POST /admin/actions/:id/execute` | Rechecks that the record is exactly as it was when proposed, runs the existing handler once, records the outcome. `409 not_approved`; `409 stale_action` if it changed or already ran. Never charges, refunds or changes a balance. |
 
 The AI tools and the MCP adapter call these same backend operations with the same permissions.

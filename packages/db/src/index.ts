@@ -25,7 +25,16 @@ export {
   type CheckoutRecord,
   type CreateCheckoutResult,
 } from "./checkouts";
+export { getCustomerBilling } from "./billing";
 export { closePools, requireEnv } from "./client";
+export {
+  compensateUsage,
+  consumeCredits,
+  expireLapsedCredits,
+  getCustomerBalance,
+  type CompensateResult,
+  type ConsumeResult,
+} from "./credits";
 export {
   createApiKey,
   findActiveApiKey,

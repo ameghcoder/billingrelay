@@ -57,6 +57,13 @@
       "when": 1794227046313,
       "tag": "0007_elite_the_twelve",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794305887906,
+      "tag": "0008_colossal_malice",
+      "breakpoints": true
     }
   ]
 }

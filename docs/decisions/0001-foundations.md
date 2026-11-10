@@ -59,3 +59,6 @@ Status: accepted, 2026-10-28 to 2026-11-05.
     lost answer can leave an unused plan or an unapproved subscription at PayPal. Neither can charge anyone: no buyer ever gets its link.
 37. **Access runs 24 hours past PayPal's next billing time, and late approvals are honoured.** Renewals post hours late, and PayPal charges
     when the buyer approves, whatever our checkout's hour says.
+38. **Credits are lots plus an append-only ledger, locked per customer.** A lot per payment makes "one grant per payment" a unique key, and
+    knowing which lot a debit took from lets a compensation give back exactly that and a refund restrict exactly that pack.
+39. **Spending checks end times itself; the expiry sweep only records.** A late worker can never let a lapsed month's credits be spent.

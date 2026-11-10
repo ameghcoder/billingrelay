@@ -5,6 +5,7 @@ import {
   claimPaypalEvent,
   claimSubscriptionForCheck,
   claimUnclearCheckout,
+  expireLapsedCredits,
   failAbandonedPaypalEvents,
   finishPaypalEvent,
   retryPaypalEvent,
@@ -56,6 +57,7 @@ async function drain<T>(shouldStop: () => boolean, claim: () => Promise<T | null
 /** One look at everything that's due. Safe to run from any number of workers at once. */
 export async function runPass(shouldStop: () => boolean): Promise<void> {
   await failAbandonedPaypalEvents();
+  await expireLapsedCredits();
   await drain(shouldStop, claimPaypalEvent, runEvent);
   await drain(shouldStop, claimCheckoutForBenefits, (id) => runCheck("Checkout", "benefits", id, applyCheckoutBenefits));
   await drain(shouldStop, claimUnclearCheckout, (id) => runCheck("Checkout", "unclear payment", id, recheckPayment));

@@ -37,10 +37,10 @@ The API key determines the project and environment (sandbox/live). The merchant 
 | `POST /v1/quotes/:id/check` | `{ externalCustomerId }`. Returns the stored quote if this customer can still use it. `422 quote_customer_mismatch`, `422 quote_expired`, `404` outside this project or environment. Checkout applies the same rule. |
 | `POST /v1/checkouts` | Start checkout from a quote or the live catalog. `201` when created, `200` for a retry. See below. |
 | `GET /v1/checkouts/:id` | Money, fulfillment and sync status kept separate, plus the safe next action. Read-only, with no PayPal call. |
-| `GET /v1/customers/:externalCustomerId/billing` | Purchases, subscriptions, access, credit balance, `version`. |
+| `GET /v1/customers/:externalCustomerId/billing` | Access (with `active` and `activeUntil`), subscriptions, paid purchases, credits `{ monthly, packs, total, monthlyEndsAt }`, and a `version` that grows with every change. `404` for a customer never seen. |
 | `POST /v1/subscriptions/:id/cancel` | Stops renewals at PayPal, then returns the subscription as PayPal now has it. Access stays until `accessUntil`. Safe to repeat. `409 subscription_not_started` before the buyer approves; `503 paypal_unavailable` if PayPal can't be reached, so renewals may not be stopped yet. |
-| `POST /v1/credits/consume` | Atomic debit: `{ externalCustomerId, amount, usageId }`. The same `usageId` returns the prior result. |
-| `POST /v1/usage/:usageId/compensate` | One compensation linked to the original debit. |
+| `POST /v1/credits/consume` | Atomic debit: `{ externalCustomerId, amount, usageId }` → `200 { usageId, debited, balance }`. Monthly credits first. The same `usageId` with the same amount returns `200` again with no second debit; with another amount or customer, `409 usage_conflict`. `422 insufficient_credits` with `details.balance` stores nothing. |
+| `POST /v1/usage/:usageId/compensate` | Gives that debit's credits back to the lots it came from, once → `200 { usageId, compensated, balance }`; a repeat returns the same. `404` for a usageId never debited. |
 
 A quote takes one of two forms, plus optional `quantity` (default 1), `expiresInSeconds` (60 to 3600, default 1800) and `metadata`
 (up to 20 text values, stored for tracing and never acted on):

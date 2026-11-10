@@ -3,6 +3,7 @@ import type { CheckoutSyncStatus, DestinationState, Projection, SyncEntityType, 
 import { sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { getDb } from "./client";
+import { readBalance } from "./credits";
 import { retryDelay } from "./retry-delay";
 
 const MAX_ATTEMPTS = 8;
@@ -123,9 +124,37 @@ async function loadSubscriptionProjection(entityId: string): Promise<Projection 
   };
 }
 
+/** The balance as it is now, worked out the same way spending sees it. A copy of a balance, never credits added up there. */
+async function loadCreditProjection(entityId: string): Promise<Projection | null> {
+  const { rows } = await getDb().execute<{ project_id: string; customer_id: string; external_customer_id: string; environment: string; source_version: number; updated_at: string }>(sql`
+    SELECT a.project_id, a.customer_id, cu.external_customer_id, a.environment, a.source_version, a.updated_at
+    FROM credit_account a JOIN customer cu ON cu.id = a.customer_id
+    WHERE a.id = ${entityId}`);
+  const row = rows[0];
+  if (!row) return null;
+  const balance = await readBalance(getDb(), entityId);
+  return {
+    entityType: "credit_account",
+    row: {
+      projectId: row.project_id,
+      customerId: row.customer_id,
+      externalCustomerId: row.external_customer_id,
+      accountId: entityId,
+      environment: row.environment,
+      monthly: balance.monthly,
+      packs: balance.packs,
+      total: balance.total,
+      monthlyEndsAt: balance.monthlyEndsAt ? new Date(balance.monthlyEndsAt) : null,
+      sourceVersion: row.source_version,
+      sourceUpdatedAt: new Date(row.updated_at),
+    },
+  };
+}
+
 /** The record as it is now, not as it was when the row was written: one delivery covers every change before it. */
 export async function loadProjection(entityType: SyncEntityType, entityId: string): Promise<Projection | null> {
   if (entityType === "subscription") return loadSubscriptionProjection(entityId);
+  if (entityType === "credit_account") return loadCreditProjection(entityId);
   if (entityType === "checkout") {
     const { rows } = await getDb().execute<PurchaseRow>(sql`
       SELECT c.project_id, c.customer_id, cu.external_customer_id, c.id AS checkout_id, c.environment,

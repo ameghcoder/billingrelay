@@ -239,7 +239,9 @@ const claimCheckout = async (needsWork: SQL): Promise<string | null> => {
 
 /** Money arrived and its benefits haven't been applied: the buyer's own confirm, or a crash between the two steps. */
 export const claimCheckoutForBenefits = () =>
-  claimCheckout(sql`money_status = 'captured' AND fulfillment_reason IS NULL AND snapshot->'product'->>'kind' <> 'subscription'`);
+  claimCheckout(sql`
+    money_status = 'captured' AND snapshot->'product'->>'kind' <> 'subscription'
+    AND (fulfillment_reason IS NULL OR fulfillment_reason = 'waiting_for_credit_ledger')`);
 
 /** A capture was sent and its outcome isn't known. Gives up after about a day, and stays visible for a person. */
 export const claimUnclearCheckout = () =>

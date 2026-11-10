@@ -1,10 +1,10 @@
-import type { AccessProjection, Projection, PurchaseProjection, SubscriptionProjection } from "@billingrelay/core/sync";
+import type { AccessProjection, CreditBalanceProjection, Projection, PurchaseProjection, SubscriptionProjection } from "@billingrelay/core/sync";
 import pg from "pg";
 import { classifyDestinationError, type DestinationFailure } from "./errors";
 import { destinationUrlProblem } from "./tls";
 
 /** The version of `migrations/` this code writes to. The worker delivers nothing to any other. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 const POOL_SETTINGS = {
   max: 2,
@@ -99,10 +99,28 @@ const upsertSubscription = (row: SubscriptionProjection) => ({
   ],
 });
 
+const upsertBalance = (row: CreditBalanceProjection) => ({
+  text: `
+    INSERT INTO billingrelay.credit_balances AS b
+      (project_id, account_id, environment, customer_id, external_customer_id, monthly, packs, total, monthly_ends_at,
+       source_version, source_updated_at, synced_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+    ON CONFLICT (project_id, account_id) DO UPDATE
+    SET monthly = EXCLUDED.monthly, packs = EXCLUDED.packs, total = EXCLUDED.total, monthly_ends_at = EXCLUDED.monthly_ends_at,
+        source_version = EXCLUDED.source_version, source_updated_at = EXCLUDED.source_updated_at, synced_at = now()
+    WHERE EXCLUDED.source_version > b.source_version
+    RETURNING 1`,
+  values: [
+    row.projectId, row.accountId, row.environment, row.customerId, row.externalCustomerId, row.monthly, row.packs, row.total, row.monthlyEndsAt,
+    row.sourceVersion, row.sourceUpdatedAt,
+  ],
+});
+
 const upsertFor = (projection: Projection) => {
   if (projection.entityType === "checkout") return upsertPurchase(projection.row);
   if (projection.entityType === "access_grant") return upsertAccess(projection.row);
-  return upsertSubscription(projection.row);
+  if (projection.entityType === "subscription") return upsertSubscription(projection.row);
+  return upsertBalance(projection.row);
 };
 
 /**

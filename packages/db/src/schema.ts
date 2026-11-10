@@ -4,7 +4,7 @@ import type { QuoteSnapshot } from "@billingrelay/core/quotes";
 import type { SubscriptionReviewReason, SubscriptionStatus } from "@billingrelay/core/subscriptions";
 import type { DestinationState, OutboxStatus, SyncOutcome } from "@billingrelay/core/sync";
 import { sql } from "drizzle-orm";
-import { boolean, check, index, integer, json, jsonb, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, index, integer, json, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 
 // Better Auth expects these four tables and column names.
@@ -373,7 +373,7 @@ export const outbox = pgTable(
     projectId: uuid("project_id")
       .notNull()
       .references(() => project.id),
-    entityType: text("entity_type").$type<"checkout" | "access_grant" | "subscription">().notNull(),
+    entityType: text("entity_type").$type<"checkout" | "access_grant" | "subscription" | "credit_account">().notNull(),
     entityId: uuid("entity_id").notNull(),
     sourceVersion: integer("source_version").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -385,7 +385,7 @@ export const outbox = pgTable(
   },
   (table) => [
     unique("outbox_entity_version_unique").on(table.entityType, table.entityId, table.sourceVersion),
-    check("outbox_entity_type_check", sql`${table.entityType} IN ('checkout', 'access_grant', 'subscription')`),
+    check("outbox_entity_type_check", sql`${table.entityType} IN ('checkout', 'access_grant', 'subscription', 'credit_account')`),
     check("outbox_status_check", sql`${table.status} IN ('pending', 'delivered', 'failed')`),
     index("outbox_due_idx").on(table.nextAttemptAt).where(sql`${table.status} = 'pending'`),
   ],
@@ -509,6 +509,84 @@ export const subscriptionPayment = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [unique("subscription_payment_sale_unique").on(table.paypalSaleId), index("subscription_payment_subscription_idx").on(table.subscriptionId)],
+);
+
+// One per customer with credits. Its row is what a debit locks, so two spends at once happen one after the other.
+export const creditAccount = pgTable(
+  "credit_account",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id),
+    environment: text("environment").$type<"sandbox" | "live">().notNull(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customer.id),
+    sourceVersion: integer("source_version").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("credit_account_customer_unique").on(table.projectId, table.environment, table.customerId),
+    check("credit_account_environment_check", sql`${table.environment} IN ('sandbox', 'live')`),
+  ],
+);
+
+// What one payment granted, and what's left of it. Packs never end; a month's credits end with the paid month.
+export const creditLot = pgTable(
+  "credit_lot",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => creditAccount.id),
+    bucket: text("bucket").$type<"monthly" | "pack">().notNull(),
+    amount: bigint("amount", { mode: "number" }).notNull(),
+    remaining: bigint("remaining", { mode: "number" }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    status: text("status").$type<"active" | "restricted">().notNull().default("active"),
+    // The capture or sale that paid for it: one grant per payment.
+    paypalPaymentId: text("paypal_payment_id").notNull(),
+    checkoutId: uuid("checkout_id").references(() => checkout.id),
+    subscriptionId: uuid("subscription_id").references(() => subscription.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("credit_lot_payment_unique").on(table.paypalPaymentId),
+    check("credit_lot_bucket_check", sql`${table.bucket} IN ('monthly', 'pack')`),
+    check("credit_lot_status_check", sql`${table.status} IN ('active', 'restricted')`),
+    check("credit_lot_remaining_check", sql`${table.remaining} >= 0 AND ${table.remaining} <= ${table.amount}`),
+    index("credit_lot_account_idx").on(table.accountId),
+  ],
+);
+
+// Append-only. Grants and compensations add, debits and expiries take away; the lots say where.
+export const creditEntry = pgTable(
+  "credit_entry",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id),
+    environment: text("environment").$type<"sandbox" | "live">().notNull(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => creditAccount.id),
+    kind: text("kind").$type<"grant" | "debit" | "compensation" | "expiry">().notNull(),
+    amount: bigint("amount", { mode: "number" }).notNull(),
+    lotId: uuid("lot_id").references(() => creditLot.id),
+    usageId: text("usage_id"),
+    debitId: uuid("debit_id"),
+    allocation: jsonb("allocation").$type<{ lotId: string; amount: number }[]>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("credit_entry_kind_check", sql`${table.kind} IN ('grant', 'debit', 'compensation', 'expiry')`),
+    // One debit per usage ID in a project and environment, and one compensation per debit.
+    uniqueIndex("credit_entry_usage_unique").on(table.projectId, table.environment, table.usageId).where(sql`${table.kind} = 'debit'`),
+    uniqueIndex("credit_entry_compensation_unique").on(table.debitId).where(sql`${table.kind} = 'compensation'`),
+    index("credit_entry_account_idx").on(table.accountId, table.createdAt),
+  ],
 );
 
 export type PaypalEventStatus = "pending" | "processed" | "ignored" | "failed";

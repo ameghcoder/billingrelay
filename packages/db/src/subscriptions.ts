@@ -3,6 +3,7 @@ import { accessUntil, type SubscriptionReviewReason, type SubscriptionStatus } f
 import { sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { getDb } from "./client";
+import { grantCredits } from "./credits";
 import type { ProjectScope } from "./schema";
 
 type Tx = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
@@ -181,6 +182,7 @@ type LockedRow = {
   next_billing_time: string | null;
   checkout_created_at: string;
   access_key: string | null;
+  monthly_credits: number | null;
 };
 
 const MONEY_REASON_FOR: Record<SubscriptionReviewReason, MoneyReason> = {
@@ -199,7 +201,8 @@ export async function recordSubscriptionState(id: string, read: SubscriptionRead
     const { rows } = await tx.execute<LockedRow>(sql`
       SELECT s.id, s.project_id, s.environment, s.customer_id, s.checkout_id, s.status, s.review_reason, s.paid_through, s.next_billing_time,
              c.created_at AS checkout_created_at,
-             (SELECT b->>'key' FROM json_array_elements(c.snapshot->'benefits') b WHERE b->>'kind' = 'access' LIMIT 1) AS access_key
+             (SELECT b->>'key' FROM json_array_elements(c.snapshot->'benefits') b WHERE b->>'kind' = 'access' LIMIT 1) AS access_key,
+             (SELECT (b->>'amount')::bigint FROM json_array_elements(c.snapshot->'benefits') b WHERE b->>'kind' = 'credits' LIMIT 1) AS monthly_credits
       FROM subscription s JOIN checkout c ON c.id = s.checkout_id
       WHERE s.id = ${id}
       FOR UPDATE OF s`);
@@ -252,6 +255,21 @@ export async function recordSubscriptionState(id: string, read: SubscriptionRead
 
     if (paidThroughChanged && paidThrough && locked.access_key) {
       await extendAccess(tx, locked, paidThrough, counted[0]!.paypalSaleId);
+    }
+    // This month's credits, from the payment that paid for it. They end with the access; the last month's end now.
+    if (paidThroughChanged && paidThrough && locked.monthly_credits) {
+      const latest = counted.reduce((a, b) => (a.paidAt > b.paidAt ? a : b));
+      await grantCredits(tx, {
+        projectId: locked.project_id,
+        environment: locked.environment,
+        customerId: locked.customer_id,
+        paypalPaymentId: latest.paypalSaleId,
+        bucket: "monthly",
+        amount: Number(locked.monthly_credits),
+        expiresAt: accessUntil(paidThrough),
+        checkoutId: locked.checkout_id,
+        subscriptionId: locked.id,
+      });
     }
     await settleCheckout(tx, locked, { firstCounted: counted[0] ?? null, problem: firstProblem, approved: read.approved });
   });

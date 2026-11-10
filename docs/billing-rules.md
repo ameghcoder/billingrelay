@@ -131,6 +131,21 @@ subscription ends. Monthly credits are spent first. Expiry is a new ledger entry
 the end date itself so a delayed job can't allow expired credits to be used. The M09 grace period applies to credits as
 well as access.
 
+**As built (M11).**
+
+| Area | Rule |
+|---|---|
+| Lots | Each payment grants one lot: a pack's capture, or a subscription's counted sale. Unique on the PayPal payment ID, so repeats grant nothing |
+| Amount | Per unit times quantity for packs; the monthly amount for each paid month. `bigint` |
+| Lock | Every change locks the customer's credit account row first, so spends, grants, refunds and expiry happen one after another |
+| Spend | Monthly lots first (soonest ending first), then packs (oldest first). Only active lots with credits left and not past their end. Not enough: nothing is stored |
+| Usage ID | One debit per usage ID in a project and environment. A different amount or customer on it is a conflict |
+| Compensation | One per debit, back to the same lots. A monthly lot that ended meanwhile gets them back but can't spend them |
+| Renewal | Ends the last month's leftover with an expiry entry, then grants the new month |
+| Lapsed month | Can't be spent from its end time. The worker writes its expiry entry afterwards, so the ledger and the synced balance say so |
+| Refund | The refunded pack's lot is restricted. Credits already spent stay spent; other lots stay spendable |
+| Invariant | For every account, the sum of its entries equals what its lots hold |
+
 ## Processing
 
 Once PayPal has told us something, the worker finishes the job, whether or not the buyer comes back.

@@ -24,6 +24,7 @@ import {
   retrySyncNow,
   startSyncStatus,
   applyCheckoutBenefits,
+  consumeCredits,
   createCheckout,
   recordSubscriptionState,
   restrictRefundedCheckout,
@@ -146,12 +147,13 @@ describe.runIf(process.env.E2E_WRITE_DB === "1" && !!process.env.DESTINATION_OWN
       expect(first.status).toBe(0);
       expect(first.stdout).toContain("Applied 001_initial.sql");
       expect(first.stdout).toContain("Applied 002_subscriptions.sql");
+      expect(first.stdout).toContain("Applied 003_credit_balances.sql");
       const tables = () => inDatabase(database, async (c) => (await c.query("SELECT string_agg(table_name, ',' ORDER BY table_name) AS t FROM information_schema.tables WHERE table_schema = 'billingrelay'")).rows[0].t);
-      expect(await tables()).toBe("access,customers,purchases,schema_version,subscriptions");
+      expect(await tables()).toBe("access,credit_balances,customers,purchases,schema_version,subscriptions");
       const second = setup(database);
       expect(second.status).toBe(0);
       expect(second.stdout).not.toContain("Applied");
-      expect(await tables()).toBe("access,customers,purchases,schema_version,subscriptions");
+      expect(await tables()).toBe("access,credit_balances,customers,purchases,schema_version,subscriptions");
     });
 
     it("upgrades a version 1 destination in place, keeping its rows", async () => {
@@ -165,6 +167,7 @@ describe.runIf(process.env.E2E_WRITE_DB === "1" && !!process.env.DESTINATION_OWN
       expect(result.status).toBe(0);
       expect(result.stdout).not.toContain("001_initial.sql");
       expect(result.stdout).toContain("Applied 002_subscriptions.sql");
+      expect(result.stdout).toContain("Applied 003_credit_balances.sql");
       expect(await inDatabase(database, async (c) => (await c.query("SELECT external_customer_id AS id FROM billingrelay.customers")).rows[0].id)).toBe("kept");
     });
 
@@ -265,6 +268,26 @@ describe.runIf(process.env.E2E_WRITE_DB === "1" && !!process.env.DESTINATION_OWN
       // The old version arriving late changes nothing.
       const old = { entityType: "access_grant" as const, row: { ...(await loadProjection("access_grant", access.grant_id))!.row, sourceVersion: 1, activeUntil: new Date(0) } };
       expect(await deliver(destination, old as never)).toBe("unchanged");
+    });
+
+    it("a balance reaches the destination as computed, and a newer one replaces it", async () => {
+      await settleOtherRows();
+      const id = await newCheckout([{ kind: "credits", amount: 40 }]);
+      await capture(id);
+      await applyCheckoutBenefits(id);
+      await pass();
+      const copied = (await owner.query("SELECT * FROM billingrelay.credit_balances WHERE customer_id = $1", [customerId])).rows[0];
+      expect(copied).toMatchObject({ external_customer_id: `app-user-${customerId}` });
+      // newCheckout grants per unit: quantity 2 of 40.
+      expect(Number(copied.packs)).toBeGreaterThanOrEqual(80);
+      const before = Number(copied.total);
+      const accountId = copied.account_id;
+      await consumeCredits({ projectId, environment: "sandbox" }, { externalCustomerId: `app-user-${customerId}`, amount: 3, usageId: `sync-${randomUUID()}` });
+      await pass();
+      const after = (await owner.query("SELECT total, source_version FROM billingrelay.credit_balances WHERE account_id = $1", [accountId])).rows[0];
+      expect(Number(after.total)).toBe(before - 3);
+      const stale = { entityType: "credit_account" as const, row: { ...(await loadProjection("credit_account", accountId))!.row, sourceVersion: 1, total: 999 } };
+      expect(await deliver(destination, stale as never)).toBe("unchanged");
     });
 
     it("copies a fixed shape with nothing that names the buyer", async () => {

@@ -65,13 +65,25 @@ export type SubscriptionProjection = CustomerProjection & {
   sourceUpdatedAt: Date;
 };
 
-export const SYNC_ENTITY_TYPES = ["checkout", "access_grant", "subscription"] as const;
+export type CreditBalanceProjection = CustomerProjection & {
+  accountId: string;
+  environment: string;
+  monthly: number;
+  packs: number;
+  total: number;
+  monthlyEndsAt: Date | null;
+  sourceVersion: number;
+  sourceUpdatedAt: Date;
+};
+
+export const SYNC_ENTITY_TYPES = ["checkout", "access_grant", "subscription", "credit_account"] as const;
 export type SyncEntityType = (typeof SYNC_ENTITY_TYPES)[number];
 
 export type Projection =
   | { entityType: "checkout"; row: PurchaseProjection }
   | { entityType: "access_grant"; row: AccessProjection }
-  | { entityType: "subscription"; row: SubscriptionProjection };
+  | { entityType: "subscription"; row: SubscriptionProjection }
+  | { entityType: "credit_account"; row: CreditBalanceProjection };
 
 export const syncStatusResponseSchema = z.object({
   destination: z.object({

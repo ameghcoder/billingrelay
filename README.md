@@ -68,8 +68,18 @@ To host it on Render, see `docs/deploy-render.md`.
 versions, API keys and quotes, so use it only on a throwaway database. Adding `E2E_PAYPAL=1`, with `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` set, also makes real, unapproved
 sandbox orders.
 
+A subscription starts the same way from a `subscription` product; `POST /v1/subscriptions/:id/cancel` stops renewals and keeps the paid time.
+To spend credits before doing the work, and give them back if it fails:
+
+```sh
+curl -X POST http://localhost:3100/v1/credits/consume -H "Authorization: Bearer $BILLINGRELAY_API_KEY" -H "Content-Type: application/json" \
+  -d '{ "externalCustomerId": "app-user-42", "amount": 10, "usageId": "job-981" }'
+curl -X POST http://localhost:3100/v1/usage/job-981/compensate -H "Authorization: Bearer $BILLINGRELAY_API_KEY"
+curl http://localhost:3100/v1/customers/app-user-42/billing -H "Authorization: Bearer $BILLINGRELAY_API_KEY"
+```
+
 **Credits.** Monthly credits from a subscription last for the paid month: unused ones don't carry over, and a customer who cancels keeps them until
-that month ends. Credit packs never expire and are spent after monthly credits. The ledger that enforces this arrives with credit packs and usage.
+that month ends. Credit packs never expire and are spent after monthly credits.
 
 ## Capability matrix
 
@@ -87,7 +97,7 @@ Only capabilities with a recorded proof are marked verified.
 | PayPal connection: encrypted secret, webhook setup, capability check | ✅ verified locally | Real sandbox, `tests/e2e/paypal-connection.test.ts` against a production build; not yet hosted |
 | Catalog: products, variants, prices, versions, activation | ✅ verified locally | `tests/e2e/catalog.test.ts` against a production build; not yet hosted, and no checkout reads it yet |
 | Catalog currencies | ⚠️ USD proven with a real payment | EUR, GBP, CAD and AUD pass validation, but no real payment has been made in them |
-| Monthly credits expire, packs don't | ⬜ not built | Rule decided and stated; the ledger comes later |
+| Monthly credits expire, packs don't | ✅ verified locally | A real subscription granted its month's credits, ending with its access; expiry and renewal proven in `tests/invariants/credits.test.ts` with time moved |
 | API keys and trusted quotes: fixed price, customer binding, expiry, safe retries | ✅ verified locally | `tests/e2e/quotes.test.ts` against a production build; a real payment used one; not yet hosted |
 | BillingRelay checkout: real sandbox purchase, one order, one capture | ✅ verified locally | Capture `3GN46362VS501844G` by a real sandbox buyer, `tests/e2e/checkouts.test.ts`; not yet hosted |
 | Unknown outcomes never charge twice: lost answer, hang, server killed mid-capture | ✅ verified locally | Lost answer and hang injected on real orders, kill was real; PayPal showed one capture each time |
@@ -97,8 +107,8 @@ Only capabilities with a recorded proof are marked verified.
 | Refunds: full or partial moves money to review and restricts access | ✅ verified locally | Real sandbox refunds with their real events. No clawback, by design |
 | Denied captures | ⚠️ not seen for real | Handled by the same path as a decline; PayPal's sandbox hasn't sent this event |
 | Declined and pending captures | ⚠️ handling verified | Decline used PayPal's mock header; pending was injected |
-| Credit ledger | ⬜ not built | A paid credit pack stays `fulfillment: pending` until it exists |
-| Credit packs and atomic consumption | ⬜ not built | |
+| Credit ledger | ✅ verified locally | Append-only; every account's entries equal its lots after real purchases, a real refund and races |
+| Credit packs and atomic consumption | ✅ verified locally | A real pack purchase granted once; 50 spends at once never overspent; one debit per usage ID; one compensation. Not yet hosted |
 | One-way sync to an independent Postgres | ✅ verified locally | A separate Postgres server stopped during a real purchase converged with one row; a worker killed after the destination committed, two workers, a hanging destination, a refused row and a restricted role, `tests/invariants/sync.test.ts`. Not yet hosted, and no TLS destination yet |
 | Billing and sync dashboard, customer trace | ✅ verified locally | `tests/e2e/dashboard.test.ts` against a production build with planted rows: "Paid, not synced" in one click, a trace down to the failed attempt's code, no payload or buyer details in any response. Read-only |
 | Rate limits and PayPal token reuse | ✅ verified locally | Floods of forged events, wrong keys and sign-ins stop at their limits without blocking other addresses; a real purchase used one token. Per process, and Render's client IP header not yet confirmed |

@@ -141,10 +141,12 @@ describe.runIf(process.env.E2E_WRITE_DB === "1")("processing invariants", { time
       expect(await count("billing_effect WHERE checkout_id = $1", [id])).toBe(0);
     });
 
-    it("credits stay pending, named, and the scan leaves them alone", async () => {
+    it("credits are granted into the ledger once, and the scan leaves an applied checkout alone", async () => {
       const id = await paidCheckout(CREDITS);
       await applyCheckoutBenefits(id);
-      expect(await checkoutRow(id)).toMatchObject({ fulfillment_status: "pending", fulfillment_reason: "waiting_for_credit_ledger", source_version: 1 });
+      await applyCheckoutBenefits(id);
+      expect(await checkoutRow(id)).toMatchObject({ fulfillment_status: "applied", fulfillment_reason: null, source_version: 2 });
+      expect(await count("credit_lot WHERE checkout_id = $1 AND amount = 100", [id])).toBe(1);
       while (await claimCheckoutForBenefits()) {
         // Drains others from earlier tests.
       }

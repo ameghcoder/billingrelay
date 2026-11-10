@@ -2,6 +2,7 @@
 // One place for the routes, and later the AI tools and MCP that read the same data.
 import { z } from "zod";
 import { FULFILLMENT_STATUSES, MONEY_REASONS, MONEY_STATUSES } from "./checkouts";
+import { SUBSCRIPTION_REVIEW_REASONS, SUBSCRIPTION_STATUSES } from "./subscriptions";
 import { CHECKOUT_SYNC_STATUSES, DESTINATION_STATES, OUTBOX_STATUSES, SYNC_ENTITY_TYPES, SYNC_OUTCOMES } from "./sync";
 
 export const PAYPAL_EVENT_STATUSES = ["pending", "processed", "ignored", "failed"] as const;
@@ -156,3 +157,40 @@ export type CustomerTraceView = z.infer<typeof customerTraceSchema>;
 
 /** Query string to a plain object, so the strict schemas can name a parameter that isn't supported. */
 export const queryOf = (request: Request) => Object.fromEntries(new URL(request.url).searchParams);
+
+export const subscriptionQuerySchema = z.strictObject({ status: z.enum(SUBSCRIPTION_STATUSES).optional(), ...pageSchema });
+export type SubscriptionQuery = z.input<typeof subscriptionQuerySchema>;
+
+const subscriptionRowSchema = z.strictObject({
+  id: z.string(),
+  checkoutId: z.string(),
+  externalCustomerId: z.string(),
+  productRef: z.string(),
+  status: z.enum(SUBSCRIPTION_STATUSES),
+  reviewReason: z.enum(SUBSCRIPTION_REVIEW_REASONS).nullable(),
+  paidThrough: z.string().nullable(),
+  accessUntil: z.string().nullable(),
+  cancelRequested: z.boolean(),
+  createdAt: z.string(),
+});
+export type DashboardSubscriptionRow = z.infer<typeof subscriptionRowSchema>;
+export const subscriptionListSchema = z.strictObject({ rows: z.array(subscriptionRowSchema), total: z.number() });
+export type SubscriptionList = z.infer<typeof subscriptionListSchema>;
+
+export const creditQuerySchema = z.strictObject({ ...pageSchema });
+export type CreditQuery = z.input<typeof creditQuerySchema>;
+
+const creditRowSchema = z.strictObject({
+  accountId: z.string(),
+  externalCustomerId: z.string(),
+  monthly: z.number(),
+  packs: z.number(),
+  total: z.number(),
+  // Credits that can't be spent: a refunded pack's.
+  restricted: z.number(),
+  monthlyEndsAt: z.string().nullable(),
+  updatedAt: z.string(),
+});
+export type DashboardCreditRow = z.infer<typeof creditRowSchema>;
+export const creditListSchema = z.strictObject({ rows: z.array(creditRowSchema), total: z.number() });
+export type CreditList = z.infer<typeof creditListSchema>;

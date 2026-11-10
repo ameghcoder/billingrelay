@@ -1,17 +1,19 @@
 "use client";
 
+import type { AttentionResponse } from "@billingrelay/core/dashboard";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CheckoutsTab, type CheckoutFilterValues } from "./checkouts-tab";
+import { CreditsTab } from "./credits-tab";
 import { EventsTab, type EventFilterValues } from "./events-tab";
 import { formatTime } from "./list-controls";
-import type { AttentionResponse } from "@billingrelay/core/dashboard";
+import { SubscriptionsTab } from "./subscriptions-tab";
 import { SyncTab, type DeliveryFilterValues } from "./sync-tab";
 
-type Tab = "checkouts" | "events" | "sync";
+type Tab = "checkouts" | "subscriptions" | "credits" | "events" | "sync";
 type View = { tab: Tab; checkouts: CheckoutFilterValues; events: EventFilterValues; deliveries: DeliveryFilterValues; version: number };
 
 function AttentionItem({ children, action }: { children: ReactNode; action?: ReactNode }) {
@@ -111,19 +113,19 @@ export function BillingDashboard({ attention }: { attention: AttentionResponse }
       <Tabs value={view.tab} onValueChange={(tab) => setView((previous) => ({ ...previous, tab: tab as Tab }))}>
         <TabsList>
           <TabsTrigger value="checkouts">Checkouts</TabsTrigger>
-          {/* Subscriptions (status, paid through, access until) are added when M09 merges. */}
-          <TabsTrigger value="subscriptions" disabled title="Added with subscriptions">
-            Subscriptions (not built yet)
-          </TabsTrigger>
-          {/* Credit balances per customer are added when M11 merges. */}
-          <TabsTrigger value="credits" disabled title="Added with the credit ledger">
-            Credits (not built yet)
-          </TabsTrigger>
+          <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
+          <TabsTrigger value="credits">Credits</TabsTrigger>
           <TabsTrigger value="events">Events</TabsTrigger>
           <TabsTrigger value="sync">Sync</TabsTrigger>
         </TabsList>
         <TabsContent value="checkouts" className="pt-2">
           <CheckoutsTab key={view.version} initial={view.checkouts} />
+        </TabsContent>
+        <TabsContent value="subscriptions" className="pt-2">
+          <SubscriptionsTab key={view.version} initial={{}} />
+        </TabsContent>
+        <TabsContent value="credits" className="pt-2">
+          <CreditsTab key={view.version} />
         </TabsContent>
         <TabsContent value="events" className="pt-2">
           <EventsTab key={view.version} initial={view.events} />

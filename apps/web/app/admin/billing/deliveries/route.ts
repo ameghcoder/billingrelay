@@ -1,6 +1,6 @@
+import { deliveryListSchema, deliveryQuerySchema, queryOf } from "@billingrelay/core/dashboard";
 import { listDashboardDeliveries } from "@billingrelay/db";
 import { invalidRequest, jsonResponse, sandboxScope, withProject } from "@/lib/admin-routes";
-import { deliveryListSchema, deliveryQuerySchema, queryOf } from "@billingrelay/core/dashboard";
 
 /** Outbox rows with their last attempt and lag. Read from our own database, never the destination. */
 export const GET = withProject(async ({ request, projectId }) => {

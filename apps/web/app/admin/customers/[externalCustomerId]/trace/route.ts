@@ -1,7 +1,7 @@
+import { customerTraceSchema } from "@billingrelay/core/dashboard";
 import { externalCustomerIdSchema } from "@billingrelay/core/quotes";
 import { getCustomerTrace } from "@billingrelay/db";
 import { apiError, jsonResponse, sandboxScope, withProject } from "@/lib/admin-routes";
-import { customerTraceSchema } from "@billingrelay/core/dashboard";
 
 /** One customer's checkouts and everything that followed each one, in time order. */
 export const GET = withProject<{ params: Promise<{ externalCustomerId: string }> }>(async ({ projectId, context }) => {

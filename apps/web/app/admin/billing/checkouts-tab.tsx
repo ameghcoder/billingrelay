@@ -1,5 +1,6 @@
 "use client";
 
+import { DASHBOARD_MONEY, DASHBOARD_SYNC_FILTERS, type CheckoutList, type CheckoutQuery, type DashboardCheckoutRow } from "@billingrelay/core/dashboard";
 import { FULFILLMENT_STATUSES } from "@billingrelay/core/checkouts";
 import { formatPrice } from "@billingrelay/core/catalog";
 import type { ColDef } from "ag-grid-community";
@@ -8,7 +9,6 @@ import { DataGrid } from "@/components/data-grid";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CustomerCell, FilterSelect, ListStatus, PAGE_SIZE, Pager, formatTime, useAdminList } from "./list-controls";
-import { DASHBOARD_MONEY, DASHBOARD_SYNC_FILTERS, type CheckoutList, type CheckoutQuery, type DashboardCheckoutRow } from "@billingrelay/core/dashboard";
 
 export type CheckoutFilterValues = Pick<CheckoutQuery, "money" | "fulfillment" | "sync">;
 

@@ -1,6 +1,6 @@
+import { eventListSchema, eventQuerySchema, queryOf } from "@billingrelay/core/dashboard";
 import { listDashboardEvents } from "@billingrelay/db";
 import { invalidRequest, jsonResponse, sandboxScope, withProject } from "@/lib/admin-routes";
-import { eventListSchema, eventQuerySchema, queryOf } from "@billingrelay/core/dashboard";
 
 /** Stored PayPal events: type, status, attempts and failure code. Never the payload, which names the buyer. */
 export const GET = withProject(async ({ request, projectId }) => {

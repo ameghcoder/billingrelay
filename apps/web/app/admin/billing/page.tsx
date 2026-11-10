@@ -1,8 +1,8 @@
+import { attentionSchema } from "@billingrelay/core/dashboard";
 import { getDashboardAttention, getDefaultProjectId } from "@billingrelay/db";
 import { sandboxScope } from "@/lib/admin-routes";
 import { requireOperatorPage } from "@/lib/operator";
 import { BillingDashboard } from "./billing-dashboard";
-import { attentionSchema } from "@billingrelay/core/dashboard";
 
 export default async function BillingPage() {
   await requireOperatorPage();

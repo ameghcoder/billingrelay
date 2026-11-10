@@ -1,10 +1,10 @@
+import { customerTraceSchema } from "@billingrelay/core/dashboard";
 import { externalCustomerIdSchema } from "@billingrelay/core/quotes";
 import { getCustomerTrace, getDefaultProjectId } from "@billingrelay/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { sandboxScope } from "@/lib/admin-routes";
 import { requireOperatorPage } from "@/lib/operator";
-import { customerTraceSchema } from "@billingrelay/core/dashboard";
 import { TraceView } from "./trace-view";
 
 export default async function CustomerPage({ params }: { params: Promise<{ externalCustomerId: string }> }) {

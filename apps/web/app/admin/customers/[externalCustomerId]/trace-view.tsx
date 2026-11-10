@@ -1,12 +1,12 @@
 "use client";
 
+import type { CustomerTraceView, TraceStepView } from "@billingrelay/core/dashboard";
 import { formatPrice } from "@billingrelay/core/catalog";
 import type { ColDef } from "ag-grid-community";
 import { DataGrid } from "@/components/data-grid";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatTime } from "../../billing/list-controls";
-import type { CustomerTraceView, TraceStepView } from "@billingrelay/core/dashboard";
 
 type StepRow = { id: string; at: string; step: string; detail: string; status: string; code: string; duration: string };
 

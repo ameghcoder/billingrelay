@@ -14,6 +14,8 @@ const ROUTES = [
   "/admin/billing/checkouts",
   "/admin/billing/events",
   "/admin/billing/deliveries",
+  "/admin/billing/subscriptions",
+  "/admin/billing/credits",
   "/admin/customers/anyone/trace",
 ];
 const PAGES = ["/admin/billing", "/admin/customers/anyone"];
@@ -333,6 +335,27 @@ describe.runIf(process.env.E2E_WRITE_DB === "1")("dashboard with planted rows", 
     ]);
     const rows = await list("/admin/billing/deliveries", { entityType: "subscription", limit: "100" });
     expect(rows.rows.find((row) => row.entityId === subscriptionId)).toMatchObject({ entityType: "subscription", checkoutId: checkouts.synced });
+
+    const subscriptions = await list("/admin/billing/subscriptions", { status: "active", limit: "100" });
+    expect(subscriptions.rows.find((row) => row.id === subscriptionId)).toMatchObject({ externalCustomerId: customers.synced, status: "active", paidThrough: null });
+    expect((await list("/admin/billing/subscriptions", { status: "cancelled", limit: "100" })).rows.some((row) => row.id === subscriptionId)).toBe(false);
+  });
+
+  it("lists each customer's credits as spending sees them: past their end, monthly credits don't count", async () => {
+    const owner = await one<{ project_id: string; customer_id: string }>("SELECT project_id, customer_id FROM checkout WHERE id = $1", [checkouts.eur]);
+    const accountId = randomUUID();
+    await db.query("INSERT INTO credit_account (id, project_id, environment, customer_id, source_version) VALUES ($1, $2, 'sandbox', $3, 3)", [accountId, owner.project_id, owner.customer_id]);
+    const lot = (bucket: string, remaining: number, expires: string | null, status = "active") =>
+      db.query(
+        `INSERT INTO credit_lot (id, account_id, bucket, amount, remaining, expires_at, status, paypal_payment_id) VALUES ($1, $2, $3, 100, $4, ${expires ?? "NULL"}, $5, $6)`,
+        [randomUUID(), accountId, bucket, remaining, status, `PLANTED-LOT-${randomUUID()}`],
+      );
+    await lot("pack", 40, null);
+    await lot("monthly", 30, "now() + interval '10 days'");
+    await lot("monthly", 25, "now() - interval '1 minute'");
+    await lot("pack", 60, null, "restricted");
+    const { rows } = await list("/admin/billing/credits", { limit: "100" });
+    expect(rows.find((row) => row.accountId === accountId)).toMatchObject({ externalCustomerId: customers.eur, monthly: 30, packs: 40, total: 70, restricted: 60 });
   });
 
   it("names what needs attention", async () => {

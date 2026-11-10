@@ -1,10 +1,10 @@
 "use client";
 
+import { PAYPAL_EVENT_STATUSES, type DashboardEventRow, type EventList, type EventQuery } from "@billingrelay/core/dashboard";
 import type { ColDef } from "ag-grid-community";
 import { useState } from "react";
 import { DataGrid } from "@/components/data-grid";
 import { CustomerCell, FilterSelect, ListStatus, PAGE_SIZE, Pager, formatTime, useAdminList } from "./list-controls";
-import { PAYPAL_EVENT_STATUSES, type DashboardEventRow, type EventList, type EventQuery } from "@billingrelay/core/dashboard";
 
 export type EventFilterValues = Pick<EventQuery, "status" | "eventType">;
 

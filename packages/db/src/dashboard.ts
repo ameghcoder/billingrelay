@@ -1,4 +1,5 @@
 import type { FulfillmentStatus, MoneyReason, MoneyStatus } from "@billingrelay/core/checkouts";
+import { accessUntil, type SubscriptionReviewReason, type SubscriptionStatus } from "@billingrelay/core/subscriptions";
 import type { CheckoutSyncStatus, DestinationState, OutboxStatus, SyncEntityType, SyncOutcome } from "@billingrelay/core/sync";
 import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "./client";
@@ -542,5 +543,113 @@ export async function getCustomerTrace(scope: ProjectScope, externalCustomerId: 
     checkouts: checkoutRowsFound
       .map((row) => ({ ...toCheckout(row), steps: steps.get(row.id)!.sort(byTime) }))
       .reverse(),
+  };
+}
+
+export type DashboardSubscription = {
+  id: string;
+  checkoutId: string;
+  externalCustomerId: string;
+  productRef: string;
+  status: SubscriptionStatus;
+  reviewReason: SubscriptionReviewReason | null;
+  paidThrough: string | null;
+  accessUntil: string | null;
+  cancelRequested: boolean;
+  createdAt: string;
+};
+
+/** Every subscription a buyer started, newest first. Pending ones never approved are shown too, so they can be told apart. */
+export async function listDashboardSubscriptions(
+  scope: ProjectScope,
+  filters: { status?: SubscriptionStatus },
+  page: DashboardPage,
+): Promise<DashboardPageOf<DashboardSubscription>> {
+  const where = and([
+    sql`s.project_id = ${scope.projectId}`,
+    sql`s.environment = ${scope.environment}`,
+    ...(filters.status ? [sql`s.status = ${filters.status}`] : []),
+  ]);
+  const db = getDb();
+  const [{ rows }, { rows: counted }] = await Promise.all([
+    db.execute<{
+      id: string;
+      checkout_id: string;
+      external_customer_id: string;
+      product_ref: string;
+      status: SubscriptionStatus;
+      review_reason: SubscriptionReviewReason | null;
+      paid_through: string | null;
+      cancel_requested_at: string | null;
+      created_at: string;
+    }>(sql`
+      SELECT s.id, s.checkout_id, cu.external_customer_id, s.product_ref, s.status, s.review_reason, s.paid_through, s.cancel_requested_at, s.created_at
+      FROM subscription s JOIN customer cu ON cu.id = s.customer_id
+      WHERE ${where}
+      ORDER BY s.created_at DESC, s.id DESC
+      LIMIT ${page.limit} OFFSET ${page.offset}`),
+    db.execute<{ total: number }>(sql`SELECT count(*)::int AS total FROM subscription s WHERE ${where}`),
+  ]);
+  return {
+    rows: rows.map((row) => ({
+      id: row.id,
+      checkoutId: row.checkout_id,
+      externalCustomerId: row.external_customer_id,
+      productRef: row.product_ref,
+      status: row.status,
+      reviewReason: row.review_reason,
+      paidThrough: isoOrNull(row.paid_through),
+      accessUntil: row.paid_through ? accessUntil(new Date(row.paid_through)).toISOString() : null,
+      cancelRequested: row.cancel_requested_at !== null,
+      createdAt: iso(row.created_at),
+    })),
+    total: counted[0]!.total,
+  };
+}
+
+export type DashboardCredit = {
+  accountId: string;
+  externalCustomerId: string;
+  monthly: number;
+  packs: number;
+  total: number;
+  restricted: number;
+  monthlyEndsAt: string | null;
+  updatedAt: string;
+};
+
+/** Each customer's credits now: spendable by bucket, and what a refund locked. The same rule spending uses. */
+export async function listDashboardCredits(scope: ProjectScope, page: DashboardPage): Promise<DashboardPageOf<DashboardCredit>> {
+  const where = sql`a.project_id = ${scope.projectId} AND a.environment = ${scope.environment}`;
+  const db = getDb();
+  const [{ rows }, { rows: counted }] = await Promise.all([
+    db.execute<{ id: string; external_customer_id: string; monthly: string; packs: string; restricted: string; monthly_ends_at: string | null; updated_at: string }>(sql`
+      SELECT a.id, cu.external_customer_id, a.updated_at, l.monthly, l.packs, l.restricted, l.monthly_ends_at
+      FROM credit_account a
+      JOIN customer cu ON cu.id = a.customer_id
+      CROSS JOIN LATERAL (
+        SELECT coalesce(sum(remaining) FILTER (WHERE bucket = 'monthly' AND status = 'active' AND expires_at > now()), 0) AS monthly,
+               coalesce(sum(remaining) FILTER (WHERE bucket = 'pack' AND status = 'active'), 0) AS packs,
+               coalesce(sum(remaining) FILTER (WHERE status = 'restricted'), 0) AS restricted,
+               max(expires_at) FILTER (WHERE bucket = 'monthly' AND status = 'active' AND remaining > 0 AND expires_at > now()) AS monthly_ends_at
+        FROM credit_lot WHERE account_id = a.id
+      ) l
+      WHERE ${where}
+      ORDER BY a.updated_at DESC, a.id DESC
+      LIMIT ${page.limit} OFFSET ${page.offset}`),
+    db.execute<{ total: number }>(sql`SELECT count(*)::int AS total FROM credit_account a WHERE ${where}`),
+  ]);
+  return {
+    rows: rows.map((row) => ({
+      accountId: row.id,
+      externalCustomerId: row.external_customer_id,
+      monthly: Number(row.monthly),
+      packs: Number(row.packs),
+      total: Number(row.monthly) + Number(row.packs),
+      restricted: Number(row.restricted),
+      monthlyEndsAt: isoOrNull(row.monthly_ends_at),
+      updatedAt: iso(row.updated_at),
+    })),
+    total: counted[0]!.total,
   };
 }

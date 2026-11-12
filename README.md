@@ -137,8 +137,8 @@ Only capabilities with a recorded proof are marked verified.
 | AI investigation and safe retry | ✅ verified locally | The real model named a refused copy's cause and proposed the existing retry; it ran once after approval, and again was refused as stale. Asked for a refund or credits, it proposed nothing (`tests/e2e/investigations.test.ts`, `tests/invariants/repairs.test.ts`) |
 | Reconciliation: no event, never returned, rebuilt database | ✅ verified locally | An approved order with no event was found and captured once; "resend everything" refilled an emptied merchant database |
 | Project isolation and model outage | ✅ verified locally | Another project's key is refused on every `/v1` route against real records; with the model down, AI says so and billing answers as usual (`tests/e2e/isolation.test.ts`, `tests/e2e/model-outage.test.ts`) |
-| Server SDK (`packages/sdk`) | ⚠️ unit-tested | Typed calls and errors from the shared schemas (`packages/sdk/src/index.test.ts`); the example merchant app is built on it |
-| Self-host with Docker Compose | ⚠️ images build | All four images build from the one `Dockerfile`; a full install from a clean folder is pending |
+| Server SDK (`packages/sdk`) | ✅ verified locally | Typed calls and errors from the shared schemas (`packages/sdk/src/index.test.ts`); the example app's real sandbox purchase and refused spend went through it |
+| Self-host with Docker Compose | ✅ verified locally | A clean folder following `docs/self-host.md`: built and healthy in under 5 minutes, a real buyer paid in the example app (a double-click made one checkout, PayPal shows one capture), the row arrived in its own database, and a restart repeated nothing. PayPal's events through the tunnel weren't confirmed in that run |
 
 Not supported: providers other than PayPal, tax, inventory, shipping, trials, proration,
 mid-cycle upgrades, automatic refunds, currency conversion.

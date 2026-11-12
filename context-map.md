@@ -15,6 +15,7 @@
 | Milestones with build scope and pass checks | `docs/milestones.md` |
 | What to test and what each proof type establishes | `docs/verification.md` |
 | Judging evidence, video script, checklist, sponsor tools | `docs/submission.md` |
+| For judges: hosted demo, walkthrough, limits | `docs/judges.md` |
 | External links | `docs/references.md` |
 | What works and how it was proven | `README.md` (capability matrix) |
 | Decisions | `docs/decisions/` |

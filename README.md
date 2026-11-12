@@ -5,6 +5,24 @@ config, take payments through PayPal, and read correct billing state from your o
 
 > Sandbox prototype for the PayPal AI Hackathon. No live money. Working name only.
 
+**Judges:** the hosted demo, its login and a walkthrough are in [`docs/judges.md`](docs/judges.md). To run it on your own machine
+with Docker, see [`docs/self-host.md`](docs/self-host.md).
+
+## Why
+
+Taking a PayPal payment is the easy part. The hard part is everything after it: knowing a payment really happened, granting what was
+bought exactly once, renewing and cancelling subscriptions, spending credits safely, and getting all of that into your app's own database
+without writing webhook handlers. BillingRelay does that part, and AI drafts the setup and explains failures, but never touches money.
+
+```
+your app ──API/SDK──▶ BillingRelay ◀──webhooks── PayPal
+                         │  verifies every payment with PayPal, keeps the ledger
+                         └──one-way sync──▶ your Postgres (billingrelay schema: purchases, access, credit balances)
+```
+
+Your backend uses the API or the server SDK (`packages/sdk`); your app reads who owns what from its own database. See
+`examples/merchant-app` for a small app that does both.
+
 ## Run it locally
 
 Needs Node 22.18+, pnpm and Docker.
@@ -118,6 +136,9 @@ Only capabilities with a recorded proof are marked verified.
 | MCP adapter | ✅ verified locally | The official MCP client drafted a version, read a customer and was refused nothing it's allowed; no tool approves or goes live, MCP and backend keys each refused on the other endpoint (`tests/e2e/mcp.test.ts`) |
 | AI investigation and safe retry | ✅ verified locally | The real model named a refused copy's cause and proposed the existing retry; it ran once after approval, and again was refused as stale. Asked for a refund or credits, it proposed nothing (`tests/e2e/investigations.test.ts`, `tests/invariants/repairs.test.ts`) |
 | Reconciliation: no event, never returned, rebuilt database | ✅ verified locally | An approved order with no event was found and captured once; "resend everything" refilled an emptied merchant database |
+| Project isolation and model outage | ✅ verified locally | Another project's key is refused on every `/v1` route against real records; with the model down, AI says so and billing answers as usual (`tests/e2e/isolation.test.ts`, `tests/e2e/model-outage.test.ts`) |
+| Server SDK (`packages/sdk`) | ⚠️ unit-tested | Typed calls and errors from the shared schemas (`packages/sdk/src/index.test.ts`); the example merchant app is built on it |
+| Self-host with Docker Compose | ⚠️ images build | All four images build from the one `Dockerfile`; a full install from a clean folder is pending |
 
 Not supported: providers other than PayPal, tax, inventory, shipping, trials, proration,
 mid-cycle upgrades, automatic refunds, currency conversion.

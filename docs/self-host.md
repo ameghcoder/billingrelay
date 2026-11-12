@@ -25,7 +25,7 @@ reaches your machine, such as an ngrok tunnel. PayPal sends webhooks there, and 
 3. **Check:** `curl localhost:3100/api/health` returns 200 with `{"source":"ok","destination":"ok","worker":"ok"}`.
 4. **Connect PayPal:** open `http://localhost:3100/login`, sign in as the operator, open **PayPal** and enter the sandbox app's client ID
    and secret. This registers the webhook at `PUBLIC_BASE_URL`.
-5. **Sell something:** in **Catalog**, add a one-time product with ref `pro` and a price (or use **AI setup**), save it, then **Approve** and **Make … live**.
+5. **Sell something:** in **Catalog**, add a one-time product with ref `pro` and a price (or use **AI setup**), save it, then **Approve vN** and **Make vN live**.
 6. **Connect the example app:** in **Developers**, create a backend API key and add `http://localhost:3200` under **Allowed return URLs**. Put the key in
    `.env.selfhost` as `BILLINGRELAY_API_KEY`, then:
    ```sh

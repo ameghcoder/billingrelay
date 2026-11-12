@@ -1,0 +1,238 @@
+{
+  "info": {
+    "name": "BillingRelay API (sandbox)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "BillingRelay backend API. Set baseUrl and apiKey (a backend key from Developers) in the environment. Keep the key on your server; never put it in a shared workspace with a value."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{apiKey}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Create a quote",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 201) pm.environment.set(\"quoteId\", pm.response.json().id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "quote-{{$randomUUID}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/quotes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "quotes"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalCustomerId\": \"{{customerId}}\",\n  \"productRef\": \"pro\"\n}"
+        },
+        "description": "A fixed price for one customer, from the live catalog. Same Idempotency-Key returns the same quote."
+      }
+    },
+    {
+      "name": "Check a quote",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/quotes/{{quoteId}}/check",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "quotes",
+            "{{quoteId}}",
+            "check"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalCustomerId\": \"{{customerId}}\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Start a checkout",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 201) pm.environment.set(\"checkoutId\", pm.response.json().id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "checkout-{{$randomUUID}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/checkouts",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "checkouts"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalCustomerId\": \"{{customerId}}\",\n  \"quoteId\": \"{{quoteId}}\",\n  \"returnUrl\": \"{{returnUrl}}\"\n}"
+        },
+        "description": "Send the buyer to checkoutUrl. returnUrl must be under an allowed return URL (Developers)."
+      }
+    },
+    {
+      "name": "Get a checkout",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/checkouts/{{checkoutId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "checkouts",
+            "{{checkoutId}}"
+          ]
+        },
+        "description": "Ask this after the buyer returns; the redirect alone proves nothing."
+      }
+    },
+    {
+      "name": "Customer billing",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/customers/{{customerId}}/billing",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "customers",
+            "{{customerId}}",
+            "billing"
+          ]
+        },
+        "description": "Access, subscriptions and credit balance."
+      }
+    },
+    {
+      "name": "Spend credits",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/credits/consume",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "credits",
+            "consume"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalCustomerId\": \"{{customerId}}\",\n  \"amount\": 10,\n  \"usageId\": \"{{usageId}}\"\n}"
+        },
+        "description": "One usageId debits once. 422 insufficient_credits when the balance is too low."
+      }
+    },
+    {
+      "name": "Give credits back",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/usage/{{usageId}}/compensate",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "usage",
+            "{{usageId}}",
+            "compensate"
+          ]
+        },
+        "description": "Returns a usage once, if the work failed."
+      }
+    },
+    {
+      "name": "Cancel a subscription",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/subscriptions/{{subscriptionId}}/cancel",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "subscriptions",
+            "{{subscriptionId}}",
+            "cancel"
+          ]
+        },
+        "description": "Stops renewals; the paid time is kept."
+      }
+    }
+  ]
+}

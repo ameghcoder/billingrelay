@@ -18,6 +18,7 @@ export type AgentResult =
   | { outcome: "no_proposal"; note: string; issues: FieldIssue[]; toolCalls: string[] };
 
 const MAX_STEPS = 6;
+const NOTHING_CHANGED = "Nothing would change: the draft is the live catalog. If you asked for something new, say what each product grants and try again.";
 
 type Variant = { ref?: unknown; price?: { amount?: unknown }; benefits?: { kind?: unknown; amount?: unknown }[] };
 type Product = { ref?: unknown; variants?: Variant[] };
@@ -64,11 +65,11 @@ export function findUnstatedAmounts(config: { products?: Product[] }, live: { pr
     (product.variants ?? []).forEach((variant, v) => {
       const amount = variant.price?.amount;
       if (typeof amount === "number" && !money.has(amount) && !kept.has(amount)) {
-        issues.push({ path: `products.${p}.variants.${v}.price.amount`, message: "The person didn't state this price. Ask them with ask_operator instead of choosing one." });
+        issues.push({ path: `products.${p}.variants.${v}.price.amount`, message: "The person didn't write this price. Use the price they wrote for this product; only if they wrote none, ask with ask_operator." });
       }
       (variant.benefits ?? []).forEach((benefit, b) => {
         if (benefit.kind === "credits" && typeof benefit.amount === "number" && !plain.has(benefit.amount) && !kept.has(benefit.amount)) {
-          issues.push({ path: `products.${p}.variants.${v}.benefits.${b}.amount`, message: "The person didn't state this credit amount. Ask them instead of choosing one." });
+          issues.push({ path: `products.${p}.variants.${v}.benefits.${b}.amount`, message: "The person didn't write this credit amount. Use the amount they wrote for this product; only if they wrote none, ask." });
         }
       });
     });
@@ -86,6 +87,7 @@ The catalog is JSON: { "products": [ ... ] }. Each product has:
 - one_time: benefits are [] or one { "kind": "access", "key": "<ref>" }; optional "maxQuantity" 1 to 100.
 - credit_pack: benefits are exactly one { "kind": "credits", "amount": whole number }; optional "maxQuantity" 1 to 100.
 - subscription: exactly one variant, billed monthly; benefits must include one access benefit and may include one credits benefit (credits each paid month).
+  If the person doesn't name a subscription's access, use the product's own ref as its access key; don't ask about it.
 - optional "fields" describe variants, e.g. a license type: { "key": "license", "label": "License", "type": "enum", "required": true, "options": ["standard", "extended"] },
   and then each variant's "attributes" sets them, e.g. { "license": "standard" }. No two variants may have the same attributes.
 Not supported: trials, proration, tax, inventory, yearly or weekly billing, currencies other than the five above. Say so if asked.
@@ -106,7 +108,8 @@ Rules:
 - Monthly credits don't carry over and end with the paid month; packs never expire and are spent after monthly credits. State this, don't ask it.
 - Keep every live product unless the person says to remove or change it: read the live catalog first, and a ref that's live can't change kind.
   If a live product already is what they describe (same kind, same prices), keep it as it is instead of adding a second one.
-- Call propose_catalog with the whole catalog. Its issues are about your JSON: fix them yourself and call it again. Never ask the person about JSON,
+- Call propose_catalog with the whole catalog. Its issues are about your JSON: fix them yourself and call it again. Never make it valid by
+  leaving out something the person asked for. Never ask the person about JSON,
   fields, attributes or refs; choose sensible refs and names yourself.
 - Ask (ask_operator, once, with every question together) only when a business decision is missing: a price, an amount, what something grants.
 - Once propose_catalog says valid, reply in one or two plain sentences saying what the catalog sells. Don't repeat the JSON.
@@ -124,6 +127,7 @@ export async function runCatalogAgent(options: {
   let lastIssues: FieldIssue[] = [];
   let questions: string[] = [];
   const toolCalls: string[] = [];
+  let gaveBackLive = false;
   // Only what the person wrote counts as stated, never the model's own earlier replies.
   const userTexts = [...(options.history ?? []).filter((turn) => turn.role === "user").map((turn) => turn.content), options.message];
 
@@ -146,6 +150,11 @@ export async function runCatalogAgent(options: {
         const whole = keepLiveProducts(config as { products?: Product[] }, liveConfig, userTexts);
         const unstated = findUnstatedAmounts(whole, liveConfig, userTexts);
         const checked: ProposalCheck = unstated.length > 0 ? { valid: false, issues: unstated } : await options.ports.checkProposal(whole);
+        // Handing back the live catalog is how the model gave up on an invalid draft, dropping what was asked for.
+        if (checked.valid && live && JSON.stringify(checked.config) === JSON.stringify(live.config)) {
+          gaveBackLive = true;
+          return { valid: false, issues: [{ path: "products", message: "This is the live catalog unchanged: it leaves out what the person asked for. Fix your previous proposal's issues instead." }] };
+        }
         if (checked.valid) {
           proposal = checked.config;
           lastIssues = [];
@@ -184,10 +193,9 @@ export async function runCatalogAgent(options: {
 
   // A question means the model isn't sure, whatever it proposed on the way.
   if (questions.length > 0) return { outcome: "questions", questions, toolCalls };
-  // The live catalog handed back unchanged isn't a proposal, whatever the reply says it contains.
-  const live = await options.ports.readLiveCatalog();
-  if (proposal !== null && live && JSON.stringify(proposal) === JSON.stringify(live.config)) {
-    return { outcome: "no_proposal", note: "Nothing would change: the draft is the live catalog.", issues: [], toolCalls };
+  // The live catalog handed back unchanged isn't a proposal, whatever the reply claims, so the person sees our note.
+  if (proposal === null && gaveBackLive) {
+    return { outcome: "no_proposal", note: NOTHING_CHANGED, issues: lastIssues, toolCalls };
   }
   if (proposal !== null) return { outcome: "proposal", config: proposal, note: result.text, toolCalls };
   return { outcome: "no_proposal", note: result.text, issues: lastIssues, toolCalls };

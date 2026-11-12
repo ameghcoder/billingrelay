@@ -142,7 +142,7 @@ describe("findUnstatedAmounts", () => {
     });
     const result = await runCatalogAgent({ model, ports: ports({ products: [pro] }), message: "Add a monthly Team plan with team access." });
     expect(result).toMatchObject({ outcome: "questions" });
-    expect(JSON.stringify(model.doGenerateCalls[1]!.prompt)).toContain("didn't state this price");
+    expect(JSON.stringify(model.doGenerateCalls[1]!.prompt)).toContain("didn't write this price");
   });
 });
 
@@ -159,7 +159,17 @@ describe("outcomes", () => {
     const model = new MockLanguageModelV4({ doGenerate: [call("propose_catalog", { config: { products: [] } }), say("Added the Team plan.")] });
     const live = catalogConfigSchema.parse({ products: [pack] });
     const result = await runCatalogAgent({ model, ports: ports(live), message: "Add a Team plan" });
-    expect(result).toMatchObject({ outcome: "no_proposal", note: "Nothing would change: the draft is the live catalog." });
+    expect(result).toMatchObject({ outcome: "no_proposal", note: expect.stringContaining("Nothing would change: the draft is the live catalog.") });
+  });
+
+  it("handing back the live catalog is refused, and a real draft after it still counts", async () => {
+    const model = new MockLanguageModelV4({
+      doGenerate: [call("propose_catalog", { config: { products: [] } }), call("propose_catalog", { config: { products: [pro] } }, "b"), say("Added Pro.")],
+    });
+    const live = catalogConfigSchema.parse({ products: [pack] });
+    const result = await runCatalogAgent({ model, ports: ports(live), message: "Add a $19 monthly Pro plan with 2,000 credits" });
+    expect(JSON.stringify(model.doGenerateCalls[1]!.prompt)).toContain("live catalog unchanged");
+    expect(result).toMatchObject({ outcome: "proposal" });
   });
 });
 

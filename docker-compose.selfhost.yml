@@ -1,0 +1,97 @@
+# BillingRelay on one machine: its own Postgres, the web app, the worker, and the example merchant app with its own Postgres.
+# Steps: docs/self-host.md. Settings come from .env.selfhost; each service gets only the ones it needs.
+name: billingrelay-selfhost
+
+x-build: &build
+  context: .
+  dockerfile: Dockerfile
+
+services:
+  source-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: billingrelay
+      POSTGRES_PASSWORD: ${SOURCE_DB_PASSWORD:?set SOURCE_DB_PASSWORD in .env.selfhost}
+      POSTGRES_DB: billingrelay
+    volumes:
+      - source-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U billingrelay -d billingrelay"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Stands in for the merchant's own database. Use yours instead by pointing the DESTINATION_* settings at it.
+  destination-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: merchant
+      POSTGRES_PASSWORD: ${MERCHANT_DB_PASSWORD:?set MERCHANT_DB_PASSWORD in .env.selfhost}
+      POSTGRES_DB: merchant
+    volumes:
+      - destination-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U merchant -d merchant"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  setup:
+    build: { <<: *build, target: setup }
+    environment:
+      DATABASE_URL: postgres://billingrelay:${SOURCE_DB_PASSWORD}@source-db:5432/billingrelay
+      OPERATOR_EMAIL: ${OPERATOR_EMAIL:?set OPERATOR_EMAIL in .env.selfhost}
+      OPERATOR_PASSWORD: ${OPERATOR_PASSWORD:?set OPERATOR_PASSWORD in .env.selfhost}
+      DESTINATION_OWNER_URL: postgres://merchant:${MERCHANT_DB_PASSWORD}@destination-db:5432/merchant
+      DESTINATION_SYNC_PASSWORD: ${DESTINATION_SYNC_PASSWORD:?set DESTINATION_SYNC_PASSWORD in .env.selfhost}
+      DESTINATION_PRIVATE_NETWORK: "1"
+    depends_on:
+      source-db: { condition: service_healthy }
+      destination-db: { condition: service_healthy }
+
+  web:
+    build: { <<: *build, target: web }
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3100}:3100"
+    environment:
+      DATABASE_URL: postgres://billingrelay:${SOURCE_DB_PASSWORD}@source-db:5432/billingrelay
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env.selfhost}
+      BETTER_AUTH_URL: http://localhost:${WEB_PORT:-3100}
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:?set SECRETS_ENCRYPTION_KEY in .env.selfhost}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env.selfhost}
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+    depends_on:
+      setup: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  worker:
+    build: { <<: *build, target: worker }
+    environment:
+      DATABASE_URL: postgres://billingrelay:${SOURCE_DB_PASSWORD}@source-db:5432/billingrelay
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
+      DESTINATION_DATABASE_URL: postgres://billingrelay_sync:${DESTINATION_SYNC_PASSWORD}@destination-db:5432/merchant
+      # destination-db is a one-word hostname on this compose network, so it's reached without TLS. Public hosts still need verify-full.
+      DESTINATION_PRIVATE_NETWORK: "1"
+    depends_on:
+      setup: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  merchant-app:
+    build: { <<: *build, target: merchant-app }
+    ports:
+      - "127.0.0.1:${EXAMPLE_APP_PORT:-3200}:3200"
+    environment:
+      BILLINGRELAY_URL: http://web:3100
+      BILLINGRELAY_API_KEY: ${BILLINGRELAY_API_KEY:-}
+      MERCHANT_DATABASE_URL: postgres://merchant:${MERCHANT_DB_PASSWORD}@destination-db:5432/merchant
+      EXAMPLE_APP_URL: http://localhost:${EXAMPLE_APP_PORT:-3200}
+      EXAMPLE_PRODUCTS: ${EXAMPLE_PRODUCTS:-pro}
+    depends_on:
+      destination-db: { condition: service_healthy }
+    restart: unless-stopped
+
+volumes:
+  source-data:
+  destination-data:

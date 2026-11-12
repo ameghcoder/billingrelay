@@ -3,6 +3,7 @@
 .claude/
 .env*
 !.env.example
+!.env.selfhost.example
 
 # Dependencies
 node_modules/

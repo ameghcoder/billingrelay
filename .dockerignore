@@ -1,0 +1,11 @@
+# Secrets and local state never go into an image.
+**/.env*
+.temp
+.claude
+.git
+**/node_modules
+**/.next
+**/dist
+**/*.tsbuildinfo
+*.log
+.playwright-mcp

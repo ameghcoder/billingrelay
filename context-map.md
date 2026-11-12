@@ -11,6 +11,7 @@
 | Destination sync: identity, flow, security, failures | `docs/postgres-sync.md` |
 | AI setup and investigation agents, flow builder, MCP, guardrails | `docs/ai-agents.md` |
 | Hosting on Render: Blueprint, env, first deploy, client IP header test | `docs/deploy-render.md` |
+| Self-host with Docker Compose, the example merchant app, troubleshooting | `docs/self-host.md` |
 | Milestones with build scope and pass checks | `docs/milestones.md` |
 | What to test and what each proof type establishes | `docs/verification.md` |
 | Judging evidence, video script, checklist, sponsor tools | `docs/submission.md` |

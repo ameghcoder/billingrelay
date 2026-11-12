@@ -17,14 +17,15 @@ The five criteria have equal weight; implementation is first in tie-breaking. Th
 
 ## Video (under 3 minutes)
 
-Recorded on the hosted demo, with one local cut for Supabase. Before recording: the shop's `pro` product is live, the merchant database
-allows your IP (Render → `billingrelay-merchant` → Networking) so `psql` reaches it, and a browser tab is open on each screen below.
+Recorded on the local stack (README, or `docs/self-host.md`) with the ngrok tunnel, plus one cut for Supabase. Before recording: the
+shop's `pro` product is live, `psql` reaches the merchant database (`docker compose exec destination-db psql -U merchant -d merchant`),
+and a browser tab is open on each screen below.
 Every scene is real; the one fault is made on camera and said so.
 
 | Time | Screen | Click / type | Say |
 |---|---|---|---|
 | 0:00–0:15 | Example shop | Sign in as `maya` | "Taking a PayPal payment is easy. Knowing it really happened, granting it once, and getting it into your own database is the work. BillingRelay does that part." |
-| 0:15–0:45 | **AI setup** | Type "Keep pro as it is. Add a $9 monthly plan with 100 credits, and a $5 pack of 50 credits"; check the diff removes nothing, **Draft a catalog**, then **Save as a new version**; open **Flow** | "I describe what I sell. The AI drafts the catalog and checks it against every rule; the flow shows what each purchase grants. It can't approve or go live." |
+| 0:15–0:45 | **AI setup** | Type "Keep pro as it is. Add a 9 USD monthly plan with 100 credits a month, and a 5 USD pack of 50 credits" (currency in the same message, or it stops to ask); check the diff removes nothing, **Draft a catalog**, then **Save as a new version**; open **Flow** | "I describe what I sell. The AI drafts the catalog and checks it against every rule; the flow shows what each purchase grants. It can't approve or go live." |
 | 0:45–0:55 | **Catalog** | On the new version: **Approve vN**, then **Make vN live** | "A person approves this exact version. Change anything and the approval is gone." |
 | 0:55–1:25 | Shop → PayPal | **Buy pro**, sign in as the sandbox buyer, pay | "A real PayPal sandbox checkout." |
 | 1:25–1:45 | Shop return, then home | Wait for `captured`; home lists `pro` | "The shop doesn't trust the redirect: it asks BillingRelay, which asked PayPal. And this access comes from the shop's own database." |
@@ -43,8 +44,8 @@ Supply reproducible evidence for flows that don't fit the video (`docs/verificat
 - [x] Explanation of AI usage: `docs/ai-agents.md`, the README's "Why"
 - [x] Postman collection with no secrets (`docs/postman/`)
 - [ ] Repo public, judged commit tagged
-- [ ] Hosted demo working: health 200, a smoke purchase delivered (`docs/deploy-render.md` steps 1–8)
-- [ ] Judge access in the submission form: dashboard login and a PayPal sandbox buyer, never in the repo
+- [x] Full local setup instead of a hosted demo: `docs/self-host.md`, verified from a clean folder to a real purchase (Render needs a
+      card, so the Blueprint stays documented but undeployed)
 - [ ] Public YouTube video under three minutes, linked in `docs/judges.md` and the form
 
 Keep secrets out of the repo, video and collections. Freeze the judged release at the deadline and avoid substantive later changes.

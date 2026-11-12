@@ -1,4 +1,4 @@
-import { generateText, hasToolCall, stepCountIs, tool, type LanguageModel, type ModelMessage } from "ai";
+import { generateText, stepCountIs, tool, type LanguageModel, type ModelMessage } from "ai";
 import { z } from "zod";
 
 export type FieldIssue = { path: string; message: string };
@@ -35,6 +35,8 @@ export function statedNumbers(texts: string[]): { money: Set<number>; plain: Set
   }
   return { money, plain };
 }
+
+const NAMING_QUESTION = /\b(ref|refs|access key|key for|currency|currencies)\b/i;
 
 const REMOVAL_WORDS = /\b(remove|delete|drop|discontinue|retire|stop selling|get rid of)\b/i;
 
@@ -95,12 +97,12 @@ Not supported: trials, proration, tax, inventory, yearly or weekly billing, curr
 A complete example with all three kinds (yours will differ):
 {"products":[
  {"ref":"pro","name":"Pro","kind":"subscription","variants":[{"ref":"monthly","name":"Monthly","attributes":{},"price":{"amount":1900,"currency":"USD"},"benefits":[{"kind":"access","key":"pro"},{"kind":"credits","amount":2000}]}]},
- {"ref":"credits-1000","name":"1,000 credits","kind":"credit_pack","variants":[{"ref":"default","name":"1,000 credits","attributes":{},"price":{"amount":500,"currency":"USD"},"benefits":[{"kind":"credits","amount":1000}]}]},
+ {"ref":"credits-1500","name":"1,500 credits","kind":"credit_pack","variants":[{"ref":"default","name":"1,500 credits","attributes":{},"price":{"amount":1300,"currency":"USD"},"benefits":[{"kind":"credits","amount":1500}]}]},
  {"ref":"template","name":"Creator template","kind":"one_time","fields":[{"key":"license","label":"License","type":"enum","required":true,"options":["standard","extended"]}],
   "variants":[{"ref":"standard","name":"Standard license","attributes":{"license":"standard"},"price":{"amount":900,"currency":"USD"},"benefits":[]},
               {"ref":"extended","name":"Extended license","attributes":{"license":"extended"},"price":{"amount":2900,"currency":"USD"},"benefits":[{"kind":"access","key":"commercial-use"}]}]}
 ]}
-Fields belong to one product only; other products don't need them.
+Fields belong to one product only; other products don't need them. The example's prices and amounts are not the person's: use only theirs.
 
 Rules:
 - "$19" means 1900 USD. Use the prices and credit amounts the person wrote. Only if one is missing, ask; never guess one.
@@ -169,6 +171,9 @@ export async function runCatalogAgent(options: {
       inputSchema: z.object({ questions: z.array(z.string().min(1).max(300)).min(1).max(5) }),
       execute: async (input) => {
         toolCalls.push("ask_operator");
+        // Naming is the model's job: questions about refs, keys or currency go back to it, never to the person.
+        const naming = input.questions.filter((question) => NAMING_QUESTION.test(question));
+        if (naming.length > 0) return { asked: false, reason: "Don't ask about refs, access keys, names or currency. Choose them yourself and propose." };
         questions = input.questions;
         return { asked: true };
       },
@@ -187,7 +192,7 @@ export async function runCatalogAgent(options: {
     // The same request should get the same draft.
     temperature: 0,
     // Asking ends the turn: the person answers in the next one.
-    stopWhen: [stepCountIs(MAX_STEPS), hasToolCall("ask_operator")],
+    stopWhen: [stepCountIs(MAX_STEPS), () => questions.length > 0],
     abortSignal: options.abortSignal,
   });
 

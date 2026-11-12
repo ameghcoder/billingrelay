@@ -32,8 +32,9 @@ AI must not invent credentials, guess taxes, silently change prices or claim an 
   tools: read the live catalog, check a proposal against every catalog and activation rule, and ask the operator. At most 6 steps; asking ends the turn.
 - **Enforced in code, not the prompt:** every price and credit amount in a new or changed product must be a number the person wrote in this
   conversation (or one that product already had live). A price copied from another product is refused back to the model, which then asks.
-  Live products the model leaves out are added back unless the person asked to remove something; a draft equal to what's live isn't a
-  proposal; and if the model asks anything, the answer is the question.
+  Live products the model leaves out are added back unless the person asked to remove something; the live catalog handed back unchanged
+  is refused back to the model (it had dropped what was asked for to pass the rules); a question about refs, access keys or currency is
+  refused back too, since naming is the model's job; and if the model asks anything else, the answer is the question.
 - The proposal is shown against what's live (new, changed, removed). Saving it makes an ordinary new version, not approved and not live.
 - **Approval** binds to one version and the hash of its stored config. Going live checks both inside the activation transaction.
 - Every AI run, approval and activation is in `audit_event`, with IDs and hashes, never the prompt's text.

@@ -156,6 +156,31 @@ checkout, `money` is the first payment: `captured` once it counts, and `paypal.c
 Money, fulfillment and sync are separate on purpose: `captured` with `pending` means the money arrived and the benefits are still on their way.
 Sync never affects money: a destination that's down only delays the copy.
 
+## Server SDK (`@billingrelay/sdk`)
+
+A typed client for the routes above, for the merchant's server only (the key never reaches a browser). Request and response shapes are the
+same Zod schemas the routes use, from `packages/core`; an answer in any other shape is refused. A refusal throws `BillingRelayError` with
+the route's `status`, `code` and `details`. Calls that start a purchase take your own idempotency key, sent as `Idempotency-Key`.
+
+```ts
+import { BillingRelayError, createBillingRelay } from "@billingrelay/sdk";
+
+const billing = createBillingRelay({ baseUrl: process.env.BILLINGRELAY_URL!, apiKey: process.env.BILLINGRELAY_API_KEY! });
+const checkout = await billing.checkouts.create(
+  { externalCustomerId: session.userId, productRef: "pro", returnUrl: "https://app.example.com/billing/return" },
+  { idempotencyKey: orderId },
+);
+// Send the buyer to checkout.checkoutUrl. On their return, ask from your server: billing.checkouts.get(id).
+try {
+  await billing.credits.consume({ externalCustomerId: session.userId, amount: 10, usageId: jobId });
+} catch (error) {
+  if (error instanceof BillingRelayError && error.code === "insufficient_credits") { /* ask them to buy a pack */ }
+}
+```
+
+Calls: `quotes.create` and `quotes.check`, `checkouts.create` and `checkouts.get`, `subscriptions.cancel`, `credits.consume` and
+`credits.compensate`, `customers.billing`. `examples/merchant-app` uses it end to end.
+
 ## Hosted checkout (browser, no credentials)
 
 | Route | Purpose |

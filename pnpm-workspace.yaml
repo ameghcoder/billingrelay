@@ -2,5 +2,6 @@ packages:
   - apps/*
   - packages/*
   - packages/providers/*
+  - examples/*
 allowBuilds:
   esbuild: true

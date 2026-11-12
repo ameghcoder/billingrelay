@@ -1,0 +1,12 @@
+/* Plain CSS on purpose: this example shows the billing calls, not a UI kit. */
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.5; }
+main { max-width: 40rem; margin: 3rem auto; padding: 0 1rem; }
+section { border: 1px solid #8884; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0; }
+h2 { font-size: 1rem; margin: 0 0 0.5rem; }
+button { font: inherit; padding: 0.4rem 0.9rem; border-radius: 0.4rem; border: 1px solid #8888; cursor: pointer; }
+input { font: inherit; padding: 0.4rem; }
+form { display: inline-block; margin: 0 0.5rem 0.5rem 0; }
+.note { padding: 0.5rem 0.75rem; border-radius: 0.4rem; background: #8882; }
+.muted { opacity: 0.7; font-size: 0.9rem; }
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+td, th { text-align: left; padding: 0.25rem 0.5rem 0.25rem 0; }

@@ -72,6 +72,11 @@ These touch hosted systems, so the owner runs them. Each step says what you shou
    checkout `captured`, then `sync: delivered`, and the row in the merchant database's `billingrelay.purchases` (read it from its Render
    page's shell, or `psql` with its external URL after allowing your IP).
 
+8. **The example shop** (`billingrelay-example-shop`, optional): in BillingRelay, create a backend API key and add the shop's https
+   address under **Developers → Allowed return URLs**. In the shop's Environment, set `BILLINGRELAY_URL` to BillingRelay's https
+   address, `BILLINGRELAY_API_KEY` to the key, and `EXAMPLE_APP_URL` to the shop's own https address, then redeploy it. With a live
+   product whose ref is `pro`, the shop shows **Buy pro**; after paying, its home page lists the access, read from its own database.
+
 ## Supabase as the merchant database
 
 The worker connects to any Postgres as a plain client; Supabase is one. Its address is public, so TLS with a verified certificate is required,

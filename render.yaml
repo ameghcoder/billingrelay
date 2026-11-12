@@ -72,3 +72,28 @@ services:
       # Render's internal hostnames (dpg-…-a) only resolve inside its private network, so no TLS there. Public hosts still need verify-full.
       - key: DESTINATION_PRIVATE_NETWORK
         value: "1"
+
+  # The example merchant app (examples/merchant-app): a shop that sells through BillingRelay and reads what each user owns from its own
+  # database. Optional; it shows the merchant's side in the demo.
+  - type: web
+    name: billingrelay-example-shop
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @billingrelay/example-merchant-app build
+    startCommand: pnpm --filter @billingrelay/example-merchant-app start
+    envVars:
+      # The app's own database: the one BillingRelay's worker syncs into.
+      - key: MERCHANT_DATABASE_URL
+        fromDatabase:
+          name: billingrelay-merchant
+          property: connectionString
+      # BillingRelay's https address, a backend key from its Developers page, and this app's own https address. Asked for at creation.
+      - key: BILLINGRELAY_URL
+        sync: false
+      - key: BILLINGRELAY_API_KEY
+        sync: false
+      - key: EXAMPLE_APP_URL
+        sync: false
+      - key: EXAMPLE_PRODUCTS
+        value: pro

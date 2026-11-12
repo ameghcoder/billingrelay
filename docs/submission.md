@@ -46,7 +46,7 @@ Supply reproducible evidence for flows that don't fit the video (`docs/verificat
 - [ ] Repo public, judged commit tagged
 - [x] Full local setup instead of a hosted demo: `docs/self-host.md`, verified from a clean folder to a real purchase (Render needs a
       card, so the Blueprint stays documented but undeployed)
-- [ ] Public YouTube video under three minutes, linked in `docs/judges.md` and the form
+- [x] Public YouTube video under three minutes (https://youtu.be/h30B6CVJp7w), linked in the README, `docs/judges.md` and the form
 
 Keep secrets out of the repo, video and collections. Freeze the judged release at the deadline and avoid substantive later changes.
 

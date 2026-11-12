@@ -5,8 +5,10 @@ config, take payments through PayPal, and read correct billing state from your o
 
 > Sandbox prototype for the PayPal AI Hackathon. No live money. Working name only.
 
-**Judges:** the hosted demo, its login and a walkthrough are in [`docs/judges.md`](docs/judges.md). To run it on your own machine
-with Docker, see [`docs/self-host.md`](docs/self-host.md).
+**Demo video (under 3 minutes):** https://youtu.be/h30B6CVJp7w
+
+**Judges:** run it on your own machine with Docker ([`docs/self-host.md`](docs/self-host.md)); the walkthrough is in
+[`docs/judges.md`](docs/judges.md).
 
 ## Why
 

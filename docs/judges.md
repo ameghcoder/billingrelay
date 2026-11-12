@@ -5,7 +5,7 @@ page is how to run it yourself.
 
 | What | Where |
 |---|---|
-| Video (under 3 minutes) | linked from the submission |
+| Video (under 3 minutes) | https://youtu.be/h30B6CVJp7w |
 | Run it: Docker, about 5 minutes to build | [`docs/self-host.md`](self-host.md) |
 | Tested commit | the release tag named in the submission |
 

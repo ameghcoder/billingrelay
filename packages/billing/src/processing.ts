@@ -38,8 +38,9 @@ async function handleSubscriptionEvent(scope: ClaimedPaypalEvent["scope"], facts
   const subscription = await findSubscriptionForEvent(scope, { paypalSubscriptionId: facts.subscriptionId, checkoutId });
   if (!subscription) {
     // Ours, but the row isn't stored yet (PayPal answered and the save hasn't committed): look again shortly.
+    // A one-time checkout never gets a subscription row, so waiting for one would only fail later.
     const ours = checkoutId && (await findCheckoutForEvent(scope, { checkoutId, orderId: null }));
-    return ours ? retry("subscription_not_recorded") : IGNORED;
+    return ours && ours.snapshot.product.kind === "subscription" ? retry("subscription_not_recorded") : IGNORED;
   }
   const { unknown } = await syncSubscription(subscription);
   if (unknown) return retry("paypal_unavailable");

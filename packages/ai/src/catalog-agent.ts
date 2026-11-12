@@ -142,7 +142,7 @@ export async function runCatalogAgent(options: {
     }),
     propose_catalog: tool({
       description: "Checks a whole catalog against every rule. Returns { valid: true } or the issues to fix. Saves nothing.",
-      inputSchema: z.object({ config: z.object({ products: z.array(z.record(z.string(), z.unknown())) }) }),
+      inputSchema: z.object({ config: z.object({ products: z.array(z.looseObject({})) }) }),
       execute: async ({ config }) => {
         toolCalls.push("propose_catalog");
         const live = await options.ports.readLiveCatalog();
